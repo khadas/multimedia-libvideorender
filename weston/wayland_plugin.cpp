@@ -1,0 +1,338 @@
+/*
+ * Copyright (C) 2021 Amlogic Corporation.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+#include "wayland_plugin.h"
+#include "wayland_display.h"
+#include "Logger.h"
+#include "Times.h"
+
+#define TAG "rlib:wayland_plugin"
+
+WaylandPlugin::WaylandPlugin()
+{
+    mDisplay = new WaylandDisplay(this);
+    mQueue = new Tls::Queue();
+    mPaused = false;
+    mImmediatelyOutput = false;
+}
+
+WaylandPlugin::~WaylandPlugin()
+{
+    if (mDisplay) {
+        delete mDisplay;
+    }
+    if (mQueue) {
+        mQueue->flush();
+        delete mQueue;
+        mQueue = NULL;
+    }
+    TRACE("desconstruct");
+}
+
+void WaylandPlugin::init()
+{
+    INFO("\n--------------------------------\n"
+            "plugin      : weston\n"
+            "ARCH        : %s\n"
+            "branch name : %s\n"
+            "git version : %s\n"
+            "change id   : %s \n"
+            "ID          : %s \n"
+            "last changed: %s\n"
+            "build-time  : %s\n"
+            "build-name  : %s\n"
+            "--------------------------------\n",
+#if defined(__aarch64__)
+            "arm64",
+#else
+            "arm",
+#endif
+            BRANCH_NAME,
+            GIT_VERSION,
+            COMMIT_CHANGEID,
+            COMMIT_PD,
+            LAST_CHANGED,
+            BUILD_TIME,
+            BUILD_NAME
+    );
+}
+
+void WaylandPlugin::release()
+{
+}
+
+void WaylandPlugin::setCallback(void *userData, PluginCallback *callback)
+{
+    mUserData = userData;
+    mCallback = callback;
+}
+
+int WaylandPlugin::openDisplay()
+{
+    int ret;
+
+    std::lock_guard<std::mutex> lck(mRenderLock);
+    DEBUG("openDisplay");
+    ret =  mDisplay->openDisplay();
+    if (ret != 0) {
+        ERROR("Error open display");
+        return -1;
+    }
+    DEBUG("openDisplay end");
+    return 0;
+}
+
+int WaylandPlugin::openWindow()
+{
+    std::lock_guard<std::mutex> lck(mRenderLock);
+    /* if weston can't support pts feature,
+     * we should create a post buffer thread to
+     * send buffer by mono time
+     */
+    if (!mDisplay->isSentPtsToWeston()) {
+        DEBUG("run frame post thread");
+        setThreadPriority(50);
+        run("waylandPostThread");
+    }
+    return 0;
+}
+
+int WaylandPlugin::prepareFrame(RenderBuffer *buffer)
+{
+    mDisplay->prepareFrameBuffer(buffer);
+    return 0;
+}
+
+int WaylandPlugin::displayFrame(RenderBuffer *buffer, int64_t displayTime)
+{
+    /* if weston can't support pts feature,
+     * push buffer to queue, the buffer will send to
+     * weston in post thread
+     */
+    if (!mDisplay->isSentPtsToWeston()) {
+        buffer->time = displayTime;
+        mQueue->push(buffer);
+        DEBUG("queue size:%d",mQueue->getCnt());
+    } else {
+        mDisplay->displayFrameBuffer(buffer, displayTime);
+    }
+    return 0;
+}
+
+void WaylandPlugin::queueFlushCallback(void *userdata,void *data)
+{
+    WaylandPlugin* plugin = static_cast<WaylandPlugin *>(userdata);
+    plugin->handleFrameDropped((RenderBuffer *)data);
+    plugin->handleBufferRelease((RenderBuffer *)data);
+}
+
+int WaylandPlugin::flush()
+{
+    RenderBuffer *entity;
+    mQueue->flushAndCallback(this, WaylandPlugin::queueFlushCallback);
+    mDisplay->flushBuffers();
+    return 0;
+}
+
+int WaylandPlugin::pause()
+{
+    mPaused = true;
+    return 0;
+}
+int WaylandPlugin::resume()
+{
+    mPaused = false;
+    return 0;
+}
+
+int WaylandPlugin::closeDisplay()
+{
+    RenderBuffer *entity;
+    std::lock_guard<std::mutex> lck(mRenderLock);
+    mDisplay->closeDisplay();
+    while (mQueue->pop((void **)&entity) == Q_OK)
+    {
+        handleBufferRelease(entity);
+    }
+
+    return 0;
+}
+
+int WaylandPlugin::closeWindow()
+{
+    std::lock_guard<std::mutex> lck(mRenderLock);
+    if (isRunning()) {
+        DEBUG("stop frame post thread");
+        requestExitAndWait();
+    }
+    return 0;
+}
+
+
+int WaylandPlugin::getValue(PluginKey key, void *value)
+{
+    switch (key) {
+        case PLUGIN_KEY_SELECT_DISPLAY_OUTPUT: {
+            *(int *)(value) = mDisplay->getDisplayOutput();
+            TRACE("get select display output:%d",*(int *)value);
+        } break;
+    }
+    return 0;
+}
+
+int WaylandPlugin::setValue(PluginKey key, void *value)
+{
+    switch (key) {
+        case PLUGIN_KEY_WINDOW_SIZE: {
+            RenderRect* rect = static_cast<RenderRect*>(value);
+            if (mDisplay) {
+                mDisplay->setWindowSize(rect->x, rect->y, rect->w, rect->h);
+            }
+        } break;
+        case PLUGIN_KEY_FRAME_SIZE: {
+            RenderFrameSize * frameSize = static_cast<RenderFrameSize * >(value);
+            if (mDisplay) {
+                mDisplay->setFrameSize(frameSize->width, frameSize->height);
+            }
+        } break;
+        case PLUGIN_KEY_VIDEO_FORMAT: {
+            int videoFormat = *(int *)(value);
+            DEBUG("Set video format :%d",videoFormat);
+            mDisplay->setVideoBufferFormat((RenderVideoFormat)videoFormat);
+        } break;
+        case PLUGIN_KEY_SELECT_DISPLAY_OUTPUT: {
+            int outputIndex = *(int *)(value);
+            DEBUG("Set select display output :%d",outputIndex);
+            mDisplay->setDisplayOutput(outputIndex);
+        } break;
+        case PLUGIN_KEY_VIDEO_PIP: {
+            int pip = *(int *) (value);
+            pip = pip > 0? 1: 0;
+            mDisplay->setPip(pip);
+        } break;
+        case PLUGIN_KEY_IMMEDIATELY_OUTPUT: {
+            bool mImmediatelyOutput = (*(int *)(value)) > 0? true: false;
+            DEBUG("Set immediately output:%d",mImmediatelyOutput);
+        } break;
+    }
+    return 0;
+}
+
+void WaylandPlugin::handleBufferRelease(RenderBuffer *buffer)
+{
+    if (mCallback) {
+        mCallback->doBufferReleaseCallback(mUserData, (void *)buffer);
+    }
+}
+
+void WaylandPlugin::handleFrameDisplayed(RenderBuffer *buffer)
+{
+    if (mCallback) {
+        mCallback->doBufferDisplayedCallback(mUserData, (void *)buffer);
+    }
+}
+
+void WaylandPlugin::handleFrameDropped(RenderBuffer *buffer)
+{
+    if (mCallback) {
+        mCallback->doBufferDropedCallback(mUserData, (void *)buffer);
+    }
+}
+
+void WaylandPlugin::readyToRun()
+{
+}
+
+bool WaylandPlugin::threadLoop()
+{
+    RenderBuffer *curFrameEntity = NULL;
+    RenderBuffer *expiredFrameEntity = NULL;
+    int64_t nowMonotime = Tls::Times::getSystemTimeUs();
+
+    //if queue is empty or paused, loop next
+    if (mQueue->isEmpty() || mPaused) {
+        goto tag_next;
+    }
+
+    //if weston obtains a buffer rendering,we can't send buffer to weston
+    if (mDisplay->isRedrawingPending()) {
+        goto tag_next;
+    }
+
+    //we output video frame asap
+    if (mImmediatelyOutput) {
+        //pop the peeked frame
+        mQueue->pop((void **)&expiredFrameEntity);
+        goto tag_post;
+    }
+
+    while (mQueue->peek((void **)&curFrameEntity, 0) == Q_OK)
+    {
+        //no frame expired,loop next
+        if (nowMonotime < curFrameEntity->time) {
+            break;
+        }
+
+        //pop the peeked frame
+        mQueue->pop((void **)&curFrameEntity);
+
+        //drop last expired frame,got a new expired frame
+        if (expiredFrameEntity) {
+            WARNING("drop,now:%lld,display:%lld(pts:%lld ms),n-d:%lld ms",
+                nowMonotime,expiredFrameEntity->time,expiredFrameEntity->pts/1000000,
+                (nowMonotime - expiredFrameEntity->time)/1000);
+            handleFrameDropped(expiredFrameEntity);
+            handleBufferRelease(expiredFrameEntity);
+            expiredFrameEntity = NULL;
+        }
+
+        expiredFrameEntity = curFrameEntity;
+    }
+
+tag_post:
+    if (!expiredFrameEntity) {
+        //TRACE(mLogCategory,"no frame expire");
+        goto tag_next;
+    }
+
+    if (mDisplay) {
+        TRACE("post,now:%lld,display:%lld(pts:%lld ms),n-d::%lld ms",
+            nowMonotime,expiredFrameEntity->time,expiredFrameEntity->pts/1000000,
+            (nowMonotime - expiredFrameEntity->time)/1000);
+        mDisplay->displayFrameBuffer(expiredFrameEntity, expiredFrameEntity->time);
+    }
+
+tag_next:
+    usleep(4*1000);
+    return true;
+}
+
+void *makePluginInstance(int id)
+{
+    char *env = getenv("VIDEO_RENDER_LOG_LEVEL");
+    if (env) {
+        int level = atoi(env);
+        Logger_set_level(level);
+        INFO("VIDEO_RENDER_LOG_LEVEL=%d",level);
+    }
+    WaylandPlugin *pluginInstance = new WaylandPlugin();
+    return static_cast<void *>(pluginInstance);
+}
+
+void destroyPluginInstance(void * plugin)
+{
+    WaylandPlugin *pluginInstance = static_cast<WaylandPlugin *>(plugin);
+    delete pluginInstance;
+}
