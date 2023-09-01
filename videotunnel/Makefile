@@ -63,7 +63,7 @@ LD_FLAG_LIB = $(LD_FLAG) -shared $(LD_SUPPORT) -llog
 $(CLIENT_LIB): $(OBJ_CLIENT_LIB)
 	$(CXX) -o $@ $^ $(LD_FLAG_LIB)
 	cp -f $(CLIENT_LIB) $(STAGING_DIR)/usr/lib
-#	rm -f $(OBJ_CLIENT_LIB)
+	rm -f $(OBJ_CLIENT_LIB)
 
 
 .PHONY: install

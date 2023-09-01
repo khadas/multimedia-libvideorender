@@ -50,7 +50,7 @@ LOCAL_CFLAGS += \
 	-I$(STAGING_DIR)/usr/include/libdrm \
 	$(VERSION_CFLAGS) \
 
-OBJ_RENDER_LIB += \
+OBJ_CLIENT_LIB += \
 	$(TOOLS_PATH)/Thread.o \
 	$(TOOLS_PATH)/Times.o \
 	$(TOOLS_PATH)/Logger.o \
@@ -79,8 +79,7 @@ LD_FLAG_LIB = $(LD_FLAG) -shared $(LD_SUPPORT) -llog -ldrm
 $(CLIENT_LIB): $(OBJ_CLIENT_LIB)
 	$(CXX) -o $@ $^ $(LD_FLAG_LIB)
 	cp -f $(CLIENT_LIB) $(STAGING_DIR)/usr/lib
-#	rm -f $(OBJ_DRM_DISPLAY)
-#	rm -f *.o
+	rm -f $(OBJ_CLIENT_LIB)
 
 .PHONY: install
 install:
