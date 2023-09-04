@@ -414,11 +414,13 @@
 	optimization for GL(ES) compositors with wl_shm clients.
       </description>
     </event>
+    <!--
     <event name="drop">
       <description summary="compositor drop buffer">
-	Sent when this wl_buffer is dropped by the compositor.
+      Sent when this wl_buffer is dropped by the compositor.
       </description>
     </event>
+    -->
   </interface>
 
   <interface name="wl_data_offer" version="3">
