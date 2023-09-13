@@ -55,7 +55,7 @@ typedef struct {
 } VideotunnelLib;
 
 
-VideotunnelLib * videotunnelLoadLib();
-int videotunnelUnloadLib(VideotunnelLib *vt);
+VideotunnelLib * videotunnelLoadLib(int logCategory);
+int videotunnelUnloadLib(int logCategory,VideotunnelLib *vt);
 
 #endif /*__VIDEO_TUNNEL_LIB_WRAP_H__*/

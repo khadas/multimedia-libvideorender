@@ -15,7 +15,7 @@
  */
 #ifndef __DRM_FRAME_POST_H__
 #define __DRM_FRAME_POST_H__
-#include <mutex>
+#include "Mutex.h"
 #include "Thread.h"
 #include "Queue.h"
 
@@ -25,7 +25,7 @@ struct FrameEntity;
 class DrmFramePost : public Tls::Thread
 {
   public:
-    DrmFramePost(DrmDisplay *drmDisplay);
+    DrmFramePost(DrmDisplay *drmDisplay,int logCategory);
     virtual ~DrmFramePost();
     bool start();
     bool stop();
@@ -46,10 +46,11 @@ class DrmFramePost : public Tls::Thread
       int h;
     } WinRect;
     DrmDisplay *mDrmDisplay;
+    int mLogCategory;
 
     bool mPaused;
     bool mStop;
-    mutable std::mutex mMutex;
+    mutable Tls::Mutex mMutex;
     Tls::Queue *mQueue;
 
     /*immediately output video frame to display*/

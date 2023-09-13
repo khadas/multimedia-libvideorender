@@ -23,7 +23,25 @@
 #define LOG_LEVEL_DEBUG   3
 #define LOG_LEVEL_TRACE   4
 
-void logPrint(int level, const char *fmt, ... );
+#define NO_CAT -1
+
+/**
+ * @brief init logger print
+ * @param id plugin instance id
+ *
+ * @return category id
+ */
+int Logger_init(int id);
+
+/**
+ * @brief exit logger print
+ * @param category category id
+ *
+ * @return
+ */
+void Logger_exit(int category);
+
+void logPrint(int category, int level, const char *fmt, ... );
 
 /**
  * @brief set log level
@@ -52,16 +70,16 @@ int Logger_get_level();
  */
 void Logger_set_file(char *filepath);
 
-#define INT_ERROR(FORMAT, ...)      logPrint(LOG_LEVEL_ERROR,  "%s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
-#define INT_WARNING(FORMAT, ...)    logPrint(LOG_LEVEL_WARNING,"%s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
-#define INT_INFO(FORMAT, ...)       logPrint(LOG_LEVEL_INFO,   "%s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
-#define INT_DEBUG(FORMAT, ...)      logPrint(LOG_LEVEL_DEBUG,  "%s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
-#define INT_TRACE(FORMAT, ...)      logPrint(LOG_LEVEL_TRACE, "%s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
+#define INT_ERROR(CAT,FORMAT, ...)      logPrint(CAT,LOG_LEVEL_ERROR,  "%s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
+#define INT_WARNING(CAT,FORMAT, ...)    logPrint(CAT,LOG_LEVEL_WARNING,"%s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
+#define INT_INFO(CAT,FORMAT, ...)       logPrint(CAT,LOG_LEVEL_INFO,   "%s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
+#define INT_DEBUG(CAT,FORMAT, ...)      logPrint(CAT,LOG_LEVEL_DEBUG,  "%s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
+#define INT_TRACE(CAT,FORMAT, ...)      logPrint(CAT,LOG_LEVEL_TRACE, "%s,%s:%d " FORMAT "\n",TAG,__func__, __LINE__, __VA_ARGS__)
 
-#define ERROR(...)                  INT_ERROR(__VA_ARGS__, "")
-#define WARNING(...)                INT_WARNING(__VA_ARGS__, "")
-#define INFO(...)                   INT_INFO(__VA_ARGS__, "")
-#define DEBUG(...)                  INT_DEBUG(__VA_ARGS__, "")
-#define TRACE(...)                  INT_TRACE(__VA_ARGS__, "")
+#define ERROR(CAT,...)                  INT_ERROR(CAT,__VA_ARGS__, "")
+#define WARNING(CAT,...)                INT_WARNING(CAT,__VA_ARGS__, "")
+#define INFO(CAT,...)                   INT_INFO(CAT,__VA_ARGS__, "")
+#define DEBUG(CAT,...)                  INT_DEBUG(CAT,__VA_ARGS__, "")
+#define TRACE(CAT,...)                  INT_TRACE(CAT,__VA_ARGS__, "")
 
 #endif /*__TOOLS_LOGGER_H__*/

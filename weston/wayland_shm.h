@@ -24,7 +24,7 @@ class WaylandDisplay;
 class WaylandShmBuffer : public WaylandWLWrap
 {
   public:
-    WaylandShmBuffer(WaylandDisplay *display);
+    WaylandShmBuffer(WaylandDisplay *display, int logCategory);
     virtual ~WaylandShmBuffer();
     virtual struct wl_buffer *getWlBuffer() {
         return mWlBuffer;
@@ -55,6 +55,8 @@ class WaylandShmBuffer : public WaylandWLWrap
     int mWidth;
     int mHeight;
     RenderVideoFormat mFormat;
+
+    int mLogCategory;
 };
 
 #endif /*__WAYLAND_SHM_H__*/

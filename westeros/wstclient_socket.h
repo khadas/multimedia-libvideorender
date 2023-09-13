@@ -20,6 +20,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include "Thread.h"
+#include "Poll.h"
 
 #ifdef  __cplusplus
 extern "C" {
@@ -98,7 +99,7 @@ class WstClientPlugin;
 
 class WstClientSocket : public Tls::Thread{
   public:
-    WstClientSocket(WstClientPlugin *plugin);
+    WstClientSocket(WstClientPlugin *plugin, int logCategory);
     virtual ~WstClientSocket();
     bool connectToSocket(const char *name);
     bool disconnectFromSocket();
@@ -126,6 +127,7 @@ class WstClientSocket : public Tls::Thread{
     void readyToRun();
     virtual bool threadLoop();
   private:
+    int mLogCategory;
     const char *mName;
     struct sockaddr_un mAddr;
     int mSocketFd;
@@ -133,6 +135,7 @@ class WstClientSocket : public Tls::Thread{
     int64_t mServerRefreshPeriod;
     int mZoomMode;
     WstClientPlugin *mPlugin;
+    Tls::Poll *mPoll;
 };
 
 #endif /*_WST_SOCKET_CLIENT_H_*/

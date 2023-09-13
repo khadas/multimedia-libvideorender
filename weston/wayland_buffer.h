@@ -15,8 +15,8 @@
  */
 #ifndef __WAYLAND_BUFFER_H__
 #define __WAYLAND_BUFFER_H__
-#include <mutex>
-#include "render_plugin.h"
+#include "Mutex.h"
+#include "Condition.h"
 #include "wayland_wlwrap.h"
 
 class WaylandDisplay;
@@ -35,7 +35,7 @@ class WaylandWindow;
  */
 class WaylandBuffer {
   public:
-    WaylandBuffer(WaylandDisplay *display);
+    WaylandBuffer(WaylandDisplay *display, int logCategory);
     virtual ~WaylandBuffer();
     int constructWlBuffer(RenderBuffer *buf);
     void forceRedrawing() {
@@ -77,6 +77,7 @@ class WaylandBuffer {
     static void bufferdroped (void *data, struct wl_buffer *wl_buffer);
     static void frameDisplayedCallback(void *data, struct wl_callback *callback, uint32_t time);
   private:
+    int mLogCategory;
     WaylandDisplay *mDisplay;
     RenderBuffer *mRenderBuffer;
     WaylandWLWrap *mWaylandWlWrap; //wl_buffer wrapper
@@ -85,7 +86,7 @@ class WaylandBuffer {
     RenderVideoFormat mBufferFormat;
     int mFrameWidth;
     int mFrameHeight;
-    mutable std::mutex mLock;
+    mutable Tls::Mutex mLock;
     bool mRedrawingPending;
 };
 

@@ -25,11 +25,12 @@
 #include "wayland_shm.h"
 #include "Logger.h"
 #include "wayland_display.h"
+#include "ErrorCode.h"
 #include "Utils.h"
 
 #define TAG "rlib:wayland_shm"
 
-WaylandShmBuffer::WaylandShmBuffer(WaylandDisplay *display)
+WaylandShmBuffer::WaylandShmBuffer(WaylandDisplay *display, int logCategory)
 {
     mDisplay = display;
     mWlBuffer = NULL;
@@ -39,6 +40,7 @@ WaylandShmBuffer::WaylandShmBuffer(WaylandDisplay *display)
     mWidth = 0;
     mHeight = 0;
     mFormat = VIDEO_FORMAT_UNKNOWN;
+    mLogCategory = logCategory;
 }
 
 WaylandShmBuffer::~WaylandShmBuffer()
@@ -87,33 +89,33 @@ struct wl_buffer *WaylandShmBuffer::constructWlBuffer(int width, int height, Ren
     }
 
     if (mStride <= 0 || mSize <= 0) {
-        WARNING("Unsupport format");
+        WARNING(mLogCategory,"Unsupport format");
         goto tag_err;
     }
 
     fd = createAnonymousFile(mSize);
     if (fd < 0) {
-        ERROR("create anonymous file fail");
+        ERROR(mLogCategory,"create anonymous file fail");
         return NULL;
     }
 
     mData = mmap(NULL, mSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (mData == MAP_FAILED) {
-        ERROR("mmap failed: %s",strerror(errno));
+        ERROR(mLogCategory,"mmap failed: %s",strerror(errno));
         goto tag_err;
     }
     //init buffer data,set alpha transparent
     memset(mData, 0x00, mSize);
 
     if (mDisplay->getShm() == NULL) {
-        ERROR("Shm is null");
+        ERROR(mLogCategory,"Shm is null");
         goto tag_err;
     }
 
     uint32_t shmFormat;
     ret = mDisplay->toShmBufferFormat(format, &shmFormat);
-    if (ret != 0) {
-        ERROR("video format to shm format fail");
+    if (ret != NO_ERROR) {
+        ERROR(mLogCategory,"video format to shm format fail");
         goto tag_err;
     }
 
@@ -145,7 +147,7 @@ int WaylandShmBuffer::createAnonymousFile(off_t size)
 
     path = getenv("XDG_RUNTIME_DIR");
     if (!path) {
-        WARNING("not set XDG_RUNTIME_DIR env");
+        WARNING(mLogCategory,"not set XDG_RUNTIME_DIR env");
         goto tag_err;
     }
 
@@ -154,7 +156,7 @@ int WaylandShmBuffer::createAnonymousFile(off_t size)
 
     fd = mkstemp(filename);
     if (fd < 0) {
-        ERROR("make anonymous file fail");
+        ERROR(mLogCategory,"make anonymous file fail");
         goto tag_err;
     }
 

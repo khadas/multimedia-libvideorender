@@ -26,69 +26,26 @@
 #include <limits.h>
 #include <time.h>
 #include <errno.h>
-#include <poll.h>
 #include "wstclient_socket.h"
 #include "wstclient_plugin.h"
 #include "Logger.h"
+#include "Utils.h"
 
 #define TAG "rlib:wstclient_socket"
 
-static int putU32( unsigned char *p, unsigned n )
+WstClientSocket::WstClientSocket(WstClientPlugin *plugin, int logCategory)
 {
-   p[0]= (n>>24);
-   p[1]= (n>>16);
-   p[2]= (n>>8);
-   p[3]= (n&0xFF);
-
-   return 4;
-}
-
-static unsigned int getU32( unsigned char *p )
-{
-   unsigned n;
-
-   n= (p[0]<<24)|(p[1]<<16)|(p[2]<<8)|(p[3]);
-
-   return n;
-}
-
-static int64_t getS64( unsigned char *p )
-{
-    int64_t n;
-
-    n= ((((int64_t)(p[0]))<<56) |
-       (((int64_t)(p[1]))<<48) |
-       (((int64_t)(p[2]))<<40) |
-       (((int64_t)(p[3]))<<32) |
-       (((int64_t)(p[4]))<<24) |
-       (((int64_t)(p[5]))<<16) |
-       (((int64_t)(p[6]))<<8) |
-       (p[7]) );
-
-   return n;
-}
-
-static int putS64( unsigned char *p,  int64_t n )
-{
-   p[0]= (((uint64_t)n)>>56);
-   p[1]= (((uint64_t)n)>>48);
-   p[2]= (((uint64_t)n)>>40);
-   p[3]= (((uint64_t)n)>>32);
-   p[4]= (((uint64_t)n)>>24);
-   p[5]= (((uint64_t)n)>>16);
-   p[6]= (((uint64_t)n)>>8);
-   p[7]= (((uint64_t)n)&0xFF);
-
-   return 8;
-}
-
-WstClientSocket::WstClientSocket(WstClientPlugin *plugin)
-{
+    mLogCategory = logCategory;
     mPlugin = plugin;
+    mPoll = new Tls::Poll(true);
 }
 
 WstClientSocket::~WstClientSocket()
 {
+    if (mPoll) {
+        delete mPoll;
+        mPoll = NULL;
+    }
 }
 
 bool WstClientSocket::connectToSocket(const char *name)
@@ -105,16 +62,16 @@ bool WstClientSocket::connectToSocket(const char *name)
     if ( !workingDir )
     {
         workingDir = "/run";
-        ERROR("wstCreateVideoClientConnection: XDG_RUNTIME_DIR is not set,set default %s",workingDir);
+        ERROR(mLogCategory,"wstCreateVideoClientConnection: XDG_RUNTIME_DIR is not set,set default %s",workingDir);
     }
 
-    DEBUG("XDG_RUNTIME_DIR=%s",workingDir);
+    INFO(mLogCategory,"XDG_RUNTIME_DIR=%s",workingDir);
 
     pathNameLen = strlen(workingDir)+strlen("/")+strlen(mName) + 1;
     if ( pathNameLen > (int)sizeof(mAddr.sun_path) )
     {
-        ERROR("wstCreateVideoClientConnection: name for server unix domain socket is too long: %d versus max %d", \
-            pathNameLen, (int)sizeof(mAddr.sun_path) );
+        ERROR(mLogCategory,"wstCreateVideoClientConnection: name for server unix domain socket is too long: %d versus max %d",
+                pathNameLen, (int)sizeof(mAddr.sun_path) );
         goto exit;
     }
 
@@ -126,7 +83,7 @@ bool WstClientSocket::connectToSocket(const char *name)
     mSocketFd = socket( PF_LOCAL, SOCK_STREAM|SOCK_CLOEXEC, 0 );
     if ( mSocketFd < 0 )
     {
-        ERROR("wstCreateVideoClientConnection: unable to open socket: errno %d", errno );
+        ERROR(mLogCategory,"wstCreateVideoClientConnection: unable to open socket: errno %d", errno );
         goto exit;
     }
 
@@ -135,11 +92,11 @@ bool WstClientSocket::connectToSocket(const char *name)
     rc = connect(mSocketFd, (struct sockaddr *)&mAddr, addressSize );
     if ( rc < 0 )
     {
-        ERROR("wstCreateVideoClientConnection: connect failed for socket: errno %d,path:%s", errno,mAddr.sun_path );
+        ERROR(mLogCategory,"wstCreateVideoClientConnection: connect failed for socket: errno %d,path:%s", errno,mAddr.sun_path );
         goto exit;
     }
 
-    INFO("wstclient socket connected,path:%s",mAddr.sun_path);
+    INFO(mLogCategory,"wstclient socket connected,path:%s",mAddr.sun_path);
 
     run("wstclientsocket");
     return true;
@@ -158,13 +115,17 @@ exit:
 bool WstClientSocket::disconnectFromSocket()
 {
     if (isRunning()) {
+        INFO(mLogCategory,"try stop socket thread");
+        if (mPoll) {
+            mPoll->setFlushing(true);
+        }
         requestExitAndWait();
     }
 
     if ( mSocketFd >= 0 )
     {
         mAddr.sun_path[0]= '\0';
-        INFO("close socket");
+        INFO(mLogCategory,"close socket");
         close( mSocketFd );
         mSocketFd = -1;
     }
@@ -205,7 +166,7 @@ void WstClientSocket::sendLayerVideoClientConnection(bool pip)
 
     if ( sentLen == len )
     {
-        INFO("sent pip %d to video server", pip);
+        INFO(mLogCategory,"sent pip %d to video server", pip);
     }
 }
 
@@ -244,7 +205,7 @@ void WstClientSocket::sendResourceVideoClientConnection(bool pip)
 
     if ( sentLen == len )
     {
-        INFO("sent resource id %d (0:primary,1:pip) to video server", resourceId);
+        INFO(mLogCategory,"sent resource id %d (0:primary,1:pip) to video server", resourceId);
     }
 }
 
@@ -281,7 +242,7 @@ void WstClientSocket::sendFlushVideoClientConnection()
 
     if ( sentLen == len )
     {
-        INFO("sent flush to video server");
+        INFO(mLogCategory,"sent flush to video server");
     }
 }
 
@@ -319,7 +280,7 @@ void WstClientSocket::sendPauseVideoClientConnection(bool pause)
 
     if ( sentLen == len )
     {
-        INFO("sent pause %d to video server", pause);
+        INFO(mLogCategory,"sent pause %d to video server", pause);
     }
 }
 
@@ -357,7 +318,7 @@ void WstClientSocket::sendHideVideoClientConnection(bool hide)
 
     if ( sentLen == len )
     {
-        INFO("sent hide %d to video server", hide);
+        INFO(mLogCategory,"sent hide %d to video server", hide);
     }
 }
 
@@ -396,7 +357,7 @@ void WstClientSocket::sendSessionInfoVideoClientConnection(int sessionId, int sy
 
     if ( sentLen == len )
     {
-        INFO("sent session info: synctype %d sessionId %d to video server", syncType, sessionId);
+        INFO(mLogCategory,"sent session info: synctype %d sessionId %d to video server", syncType, sessionId);
     }
 }
 
@@ -433,7 +394,7 @@ void WstClientSocket::sendFrameAdvanceVideoClientConnection()
 
     if ( sentLen == len )
     {
-        INFO("sent frame adavnce to video server");
+        INFO(mLogCategory,"sent frame adavnce to video server");
     }
 }
 
@@ -480,7 +441,7 @@ void WstClientSocket::sendRectVideoClientConnection(int videoX, int videoY, int 
 
     if ( sentLen == len )
     {
-        INFO("sent position to video server,vx:%d,vy:%d,vw:%d,vh:%d",videoX,videoY,videoWidth,videoHeight);
+        INFO(mLogCategory,"sent position to video server,vx:%d,vy:%d,vw:%d,vh:%d",videoX,videoY,videoWidth,videoHeight);
     }
 }
 
@@ -519,7 +480,7 @@ void WstClientSocket::sendRateVideoClientConnection(int fpsNum, int fpsDenom )
 
     if ( sentLen == len )
     {
-        INFO("sent frame rate to video server: %d/%d", fpsNum, fpsDenom);
+        INFO(mLogCategory,"sent frame rate to video server: %d/%d", fpsNum, fpsDenom);
     }
 }
 
@@ -588,7 +549,7 @@ bool WstClientSocket::sendFrameVideoClientConnection(WstBufferInfo *wstBufferInf
         fdToSend0 = fcntl( frameFd0, F_DUPFD_CLOEXEC, 0 );
         if ( fdToSend0 < 0 )
         {
-            ERROR("wstSendFrameVideoClientConnection: failed to dup fd0");
+            ERROR(mLogCategory,"wstSendFrameVideoClientConnection: failed to dup fd0");
             goto exit;
         }
         if ( frameFd1 >= 0 )
@@ -596,7 +557,7 @@ bool WstClientSocket::sendFrameVideoClientConnection(WstBufferInfo *wstBufferInf
             fdToSend1 = fcntl( frameFd1, F_DUPFD_CLOEXEC, 0 );
             if ( fdToSend1 < 0 )
             {
-                ERROR("wstSendFrameVideoClientConnection: failed to dup fd1");
+                ERROR(mLogCategory,"wstSendFrameVideoClientConnection: failed to dup fd1");
                 goto exit;
             }
             ++numFdToSend;
@@ -606,7 +567,7 @@ bool WstClientSocket::sendFrameVideoClientConnection(WstBufferInfo *wstBufferInf
             fdToSend2 = fcntl( frameFd2, F_DUPFD_CLOEXEC, 0 );
             if ( fdToSend2 < 0 )
             {
-                ERROR("wstSendFrameVideoClientConnection: failed to dup fd2");
+                ERROR(mLogCategory,"wstSendFrameVideoClientConnection: failed to dup fd2");
                 goto exit;
             }
             ++numFdToSend;
@@ -617,7 +578,7 @@ bool WstClientSocket::sendFrameVideoClientConnection(WstBufferInfo *wstBufferInf
         vw = wstRect->w;
         vh = wstRect->h;
 
-        TRACE("send frame:resolution(%dx%d),rect x:%d,y:%d,w:%d,h:%d", \
+        TRACE(mLogCategory,"send frame:resolution(%dx%d),rect x:%d,y:%d,w:%d,h:%d", \
             wstBufferInfo->frameWidth,wstBufferInfo->frameHeight, vx, vy, vw, vh);
 
         i = 0;
@@ -668,7 +629,7 @@ bool WstClientSocket::sendFrameVideoClientConnection(WstBufferInfo *wstBufferInf
             fd[2] = fdToSend2;
         }
 
-        TRACE("send frame:bufferid %d, fd (%d, %d, %d [%d, %d, %d]),realtmUs:%lld", bufferId, frameFd0, frameFd1, frameFd2, fdToSend0, fdToSend1, fdToSend2,wstBufferInfo->frameTime);
+        TRACE(mLogCategory,"send frame:bufferid %d, fd (%d, %d, %d [%d, %d, %d]),realtmUs:%lld", bufferId, frameFd0, frameFd1, frameFd2, fdToSend0, fdToSend1, fdToSend2,wstBufferInfo->frameTime);
 
         do
         {
@@ -681,7 +642,7 @@ bool WstClientSocket::sendFrameVideoClientConnection(WstBufferInfo *wstBufferInf
         }
         else
         {
-            ERROR("out: failed(%s) %d, sentLen(%d)%d, send frame %lld buffer %d ", \
+            ERROR(mLogCategory,"out: failed(%s) %d, sentLen(%d)%d, send frame %lld buffer %d ", \
                  strerror(errno), errno, sentLen, iov[0].iov_len, wstBufferInfo->frameTime, bufferId);
         }
     }
@@ -743,7 +704,7 @@ void WstClientSocket::sendCropFrameSizeClientConnection(int x, int y, int w, int
 
     if ( sentLen == len )
     {
-        INFO("sent crop frame size to video server,x:%d,y:%d,w:%d,h:%d",x,y,w,h);
+        INFO(mLogCategory,"sent crop frame size to video server,x:%d,y:%d,w:%d,h:%d",x,y,w,h);
     }
 }
 
@@ -781,7 +742,7 @@ void WstClientSocket::sendKeepLastFrameVideoClientConnection(bool keep)
 
     if ( sentLen == len )
     {
-        INFO("sent keep last frame %d to video server", keep);
+        INFO(mLogCategory,"sent keep last frame %d to video server", keep);
     }
 }
 
@@ -825,7 +786,7 @@ void WstClientSocket::processMessagesVideoClientConnection()
                     if ( mlen >= 5)
                     {
                         int rate = getU32( &m[4] );
-                        DEBUG("out: got rate %d from video server", rate);
+                        DEBUG(mLogCategory,"out: got rate %d from video server", rate);
                         mServerRefreshRate = rate;
                         if ( mPlugin )
                         {
@@ -840,7 +801,7 @@ void WstClientSocket::processMessagesVideoClientConnection()
                     if ( mlen >= 5)
                     {
                         int bid= getU32( &m[4] );
-                        TRACE("out: release received for buffer %d", bid);
+                        TRACE(mLogCategory,"out: release received for buffer %d", bid);
                         if ( mPlugin )
                         {
                             WstEvent wstEvent;
@@ -856,7 +817,7 @@ void WstClientSocket::processMessagesVideoClientConnection()
                         /* set position from frame currently presented by the video server */
                         uint64_t frameTime = getS64( &m[4] );
                         uint32_t numDropped = getU32( &m[12] );
-                        TRACE("out: status received: frameTime %lld numDropped %d", frameTime, numDropped);
+                        TRACE(mLogCategory,"out: status received: frameTime %lld numDropped %d", frameTime, numDropped);
                         if ( mPlugin )
                         {
                             WstEvent wstEvent;
@@ -871,7 +832,7 @@ void WstClientSocket::processMessagesVideoClientConnection()
                     if ( mlen >= 9 )
                     {
                         uint64_t frameTime = getS64( &m[4] );
-                        TRACE("out: underflow received: frameTime %lld", frameTime);
+                        TRACE(mLogCategory,"out: underflow received: frameTime %lld", frameTime);
                         if ( mPlugin )
                         {
                             WstEvent wstEvent;
@@ -887,7 +848,7 @@ void WstClientSocket::processMessagesVideoClientConnection()
                         int globalZoomActive= getU32( &m[4] );
                         int allow4kZoom = getU32( &m[8] );
                         int zoomMode= getU32( &m[12] );
-                        DEBUG("out: got zoom-mode %d from video server (globalZoomActive %d allow4kZoom %d)", zoomMode, globalZoomActive, allow4kZoom);
+                        DEBUG(mLogCategory,"out: got zoom-mode %d from video server (globalZoomActive %d allow4kZoom %d)", zoomMode, globalZoomActive, allow4kZoom);
                         if ( mPlugin )
                         {
                             WstEvent wstEvent;
@@ -903,7 +864,7 @@ void WstClientSocket::processMessagesVideoClientConnection()
                     if ( mlen >= 5)
                     {
                         int debugLevel = getU32( &m[4] );
-                        DEBUG("out: got video-debug-level %d from video server", debugLevel);
+                        DEBUG(mLogCategory,"out: got video-debug-level %d from video server", debugLevel);
                         if ( (debugLevel >= 0) && (debugLevel <= 7) )
                         {
                             if ( mPlugin )
@@ -936,20 +897,18 @@ void WstClientSocket::processMessagesVideoClientConnection()
 
 void WstClientSocket::readyToRun()
 {
+    if (mPoll && mSocketFd > 0) {
+        mPoll->addFd(mSocketFd);
+        mPoll->setFdReadable(mSocketFd, true);
+    }
 }
 
 bool WstClientSocket::threadLoop()
 {
     int ret;
-    struct pollfd fds;
-
-    fds.fd = mSocketFd;
-    fds.events = POLLERR | POLLNVAL | POLLHUP |POLLIN | POLLPRI | POLLRDNORM;
-    fds.revents = 0;
-
-    ret = poll(&fds, 1, 500);
+    ret = mPoll->wait(-1); //wait for ever
     if (ret < 0) { //poll error
-        WARNING("poll error");
+        WARNING(mLogCategory,"poll error");
         return false;
     } else if (ret == 0) { //poll time out
         return true; //run loop

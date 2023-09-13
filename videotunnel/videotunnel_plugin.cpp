@@ -16,16 +16,20 @@
 #include "videotunnel_plugin.h"
 #include "Logger.h"
 #include "video_tunnel.h"
+#include "ErrorCode.h"
 
 #define TAG "rlib:videotunnel_plugin"
 
-VideoTunnelPlugin::VideoTunnelPlugin()
+VideoTunnelPlugin::VideoTunnelPlugin(int logCategory)
+    : mDisplayLock("displaylock"),
+    mLogCategory(logCategory),
+    mRenderLock("renderlock")
 {
     mWinRect.x = 0;
     mWinRect.y = 0;
     mWinRect.w = 0;
     mWinRect.h = 0;
-    mVideoTunnel = new VideoTunnelImpl(this);
+    mVideoTunnel = new VideoTunnelImpl(this,logCategory);
 }
 
 VideoTunnelPlugin::~VideoTunnelPlugin()
@@ -38,7 +42,7 @@ VideoTunnelPlugin::~VideoTunnelPlugin()
 
 void VideoTunnelPlugin::init()
 {
-    INFO("\n--------------------------------\n"
+    INFO(mLogCategory,"\n--------------------------------\n"
             "plugin      : videotunnel\n"
             "ARCH        : %s\n"
             "branch name : %s\n"
@@ -78,53 +82,53 @@ void VideoTunnelPlugin::setCallback(void *userData, PluginCallback *callback)
 
 int VideoTunnelPlugin::openDisplay()
 {
-    DEBUG("openDisplay");
-    return 0;
+    DEBUG(mLogCategory,"openDisplay");
+    return NO_ERROR;
 }
 
 int VideoTunnelPlugin::openWindow()
 {
-    DEBUG("openWindow");
+    DEBUG(mLogCategory,"openWindow");
     mVideoTunnel->connect();
-    DEBUG("openWindow,end");
-    return 0;
+    DEBUG(mLogCategory,"openWindow,end");
+    return NO_ERROR;
 }
 
 int VideoTunnelPlugin::prepareFrame(RenderBuffer *buffer)
 {
-
+    return NO_ERROR;
 }
 
 int VideoTunnelPlugin::displayFrame(RenderBuffer *buffer, int64_t displayTime)
 {
     mVideoTunnel->displayFrame(buffer, displayTime);
-    return 0;
+    return NO_ERROR;
 }
 
 int VideoTunnelPlugin::flush()
 {
     mVideoTunnel->flush();
-    return 0;
+    return NO_ERROR;
 }
 
 int VideoTunnelPlugin::pause()
 {
-    return 0;
+    return NO_ERROR;
 }
 int VideoTunnelPlugin::resume()
 {
-    return 0;
+    return NO_ERROR;
 }
 
 int VideoTunnelPlugin::closeDisplay()
 {
-    return 0;
+    return NO_ERROR;
 }
 
 int VideoTunnelPlugin::closeWindow()
 {
     mVideoTunnel->disconnect();
-    return 0;
+    return NO_ERROR;
 }
 
 
@@ -136,7 +140,7 @@ int VideoTunnelPlugin::getValue(PluginKey key, void *value)
         } break;
     }
 
-    return 0;
+    return NO_ERROR;
 }
 
 int VideoTunnelPlugin::setValue(PluginKey key, void *value)
@@ -155,23 +159,23 @@ int VideoTunnelPlugin::setValue(PluginKey key, void *value)
         } break;
         case PLUGIN_KEY_VIDEO_FORMAT: {
             int videoFormat = *(int *)(value);
-            DEBUG("Set video format :%d",videoFormat);
+            DEBUG(mLogCategory,"Set video format :%d",videoFormat);
         } break;
         case PLUGIN_KEY_VIDEOTUNNEL_ID: {
             int videotunnelId = *(int *)(value);
-            DEBUG("Set videotunnel id :%d",videotunnelId);
+            DEBUG(mLogCategory,"Set videotunnel id :%d",videotunnelId);
             mVideoTunnel->setVideotunnelId(videotunnelId);
         } break;
         case PLUGIN_KEY_VIDEO_PIP: {
             int pip = *(int *) (value);
             if (pip > 0) {
                 int videotunnelId = 1; //videotunnel id 1 be used to pip
-                DEBUG("Set pip ,videotunnel id :%d",videotunnelId);
+                DEBUG(mLogCategory,"Set pip ,videotunnel id :%d",videotunnelId);
                 mVideoTunnel->setVideotunnelId(videotunnelId);
             }
         } break;
     }
-    return 0;
+    return NO_ERROR;
 }
 
 void VideoTunnelPlugin::handleBufferRelease(RenderBuffer *buffer)
@@ -204,18 +208,23 @@ void VideoTunnelPlugin::handleMsgNotify(int type, void *detail)
 
 void *makePluginInstance(int id)
 {
+    int category =Logger_init(id);
     char *env = getenv("VIDEO_RENDER_LOG_LEVEL");
     if (env) {
         int level = atoi(env);
         Logger_set_level(level);
-        INFO("VIDEO_RENDER_LOG_LEVEL=%d",level);
+        INFO(category,"VIDEO_RENDER_LOG_LEVEL=%d",level);
     }
-    VideoTunnelPlugin *plugin = new VideoTunnelPlugin();
+    VideoTunnelPlugin *plugin = new VideoTunnelPlugin(category);
     return static_cast<void *>(plugin);
 }
 
 void destroyPluginInstance(void * plugin)
 {
+    int category;
+
     VideoTunnelPlugin *pluginInstance = static_cast<VideoTunnelPlugin *>(plugin);
+    category = pluginInstance->getLogCategory();
     delete pluginInstance;
+    Logger_exit(category);
 }

@@ -17,11 +17,12 @@
 #define __VIDEO_TUNNEL_PLUGIN_H__
 #include "render_plugin.h"
 #include "videotunnel_impl.h"
+#include "Mutex.h"
 
 class VideoTunnelPlugin : public RenderPlugin
 {
   public:
-    VideoTunnelPlugin();
+    VideoTunnelPlugin(int category);
     virtual ~VideoTunnelPlugin();
     virtual void init();
     virtual void release();
@@ -45,11 +46,18 @@ class VideoTunnelPlugin : public RenderPlugin
     virtual void handleFrameDropped(RenderBuffer *buffer);
     //plugin msg callback
     void handleMsgNotify(int type, void *detail);
+    int getLogCategory() {
+        return mLogCategory;
+    };
   private:
     PluginCallback *mCallback;
     VideoTunnelImpl *mVideoTunnel;
     RenderRect mWinRect;
 
+    int mLogCategory;
+
+    mutable Tls::Mutex mDisplayLock;
+    mutable Tls::Mutex mRenderLock;
     void *mUserData;
 };
 

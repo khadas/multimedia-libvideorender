@@ -25,7 +25,7 @@
 class WstClientPlugin : public RenderPlugin
 {
   public:
-    WstClientPlugin();
+    WstClientPlugin(int logCategory);
     virtual ~WstClientPlugin();
     virtual void init();
     virtual void release();
@@ -53,6 +53,9 @@ class WstClientPlugin : public RenderPlugin
     void onWstSocketEvent(WstEvent *event);
 
     void setVideoRect(int videoX, int videoY, int videoWidth, int videoHeight);
+    int getLogCategory() {
+        return mLogCategory;
+    };
   private:
     typedef struct {
         bool isSet;
@@ -76,6 +79,7 @@ class WstClientPlugin : public RenderPlugin
     RenderRect mWinRect;
     bool mSetCropFrameRect;
     RenderRect mCropFrameRect; //set frame crop size
+    int mLogCategory;
 
     ConfigValue mKeepLastFrame;
     ConfigValue mHideVideo;
@@ -94,7 +98,7 @@ class WstClientPlugin : public RenderPlugin
     std::unordered_map<int, int64_t> mDisplayedFrameMap;
 
     bool mIsVideoPip;
-    mutable std::mutex mMutex;
+    mutable Tls::Mutex mMutex;
     void *mUserData;
 
     /*immediately output video frame to display*/

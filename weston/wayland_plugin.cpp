@@ -17,12 +17,15 @@
 #include "wayland_display.h"
 #include "Logger.h"
 #include "Times.h"
+#include "ErrorCode.h"
 
 #define TAG "rlib:wayland_plugin"
 
-WaylandPlugin::WaylandPlugin()
+WaylandPlugin::WaylandPlugin(int logCatgory)
+    : mRenderLock("renderlock"),
+    mLogCategory(logCatgory)
 {
-    mDisplay = new WaylandDisplay(this);
+    mDisplay = new WaylandDisplay(this, logCatgory);
     mQueue = new Tls::Queue();
     mPaused = false;
     mImmediatelyOutput = false;
@@ -38,12 +41,12 @@ WaylandPlugin::~WaylandPlugin()
         delete mQueue;
         mQueue = NULL;
     }
-    TRACE("desconstruct");
+    TRACE(mLogCategory,"desconstruct");
 }
 
 void WaylandPlugin::init()
 {
-    INFO("\n--------------------------------\n"
+    INFO(mLogCategory,"\n--------------------------------\n"
             "plugin      : weston\n"
             "ARCH        : %s\n"
             "branch name : %s\n"
@@ -83,36 +86,36 @@ int WaylandPlugin::openDisplay()
 {
     int ret;
 
-    std::lock_guard<std::mutex> lck(mRenderLock);
-    DEBUG("openDisplay");
+    Tls::Mutex::Autolock _l(mRenderLock);
+    DEBUG(mLogCategory,"openDisplay");
     ret =  mDisplay->openDisplay();
-    if (ret != 0) {
-        ERROR("Error open display");
-        return -1;
+    if (ret != NO_ERROR) {
+        ERROR(mLogCategory,"Error open display");
+        return ret;
     }
-    DEBUG("openDisplay end");
-    return 0;
+    DEBUG(mLogCategory,"openDisplay end");
+    return ret;
 }
 
 int WaylandPlugin::openWindow()
 {
-    std::lock_guard<std::mutex> lck(mRenderLock);
+    Tls::Mutex::Autolock _l(mRenderLock);
     /* if weston can't support pts feature,
      * we should create a post buffer thread to
      * send buffer by mono time
      */
     if (!mDisplay->isSentPtsToWeston()) {
-        DEBUG("run frame post thread");
+            DEBUG(mLogCategory,"run frame post thread");
         setThreadPriority(50);
         run("waylandPostThread");
     }
-    return 0;
+    return NO_ERROR;
 }
 
 int WaylandPlugin::prepareFrame(RenderBuffer *buffer)
 {
     mDisplay->prepareFrameBuffer(buffer);
-    return 0;
+    return NO_ERROR;
 }
 
 int WaylandPlugin::displayFrame(RenderBuffer *buffer, int64_t displayTime)
@@ -124,11 +127,11 @@ int WaylandPlugin::displayFrame(RenderBuffer *buffer, int64_t displayTime)
     if (!mDisplay->isSentPtsToWeston()) {
         buffer->time = displayTime;
         mQueue->push(buffer);
-        DEBUG("queue size:%d",mQueue->getCnt());
+            DEBUG(mLogCategory,"queue size:%d",mQueue->getCnt());
     } else {
         mDisplay->displayFrameBuffer(buffer, displayTime);
     }
-    return 0;
+    return NO_ERROR;
 }
 
 void WaylandPlugin::queueFlushCallback(void *userdata,void *data)
@@ -143,41 +146,41 @@ int WaylandPlugin::flush()
     RenderBuffer *entity;
     mQueue->flushAndCallback(this, WaylandPlugin::queueFlushCallback);
     mDisplay->flushBuffers();
-    return 0;
+    return NO_ERROR;
 }
 
 int WaylandPlugin::pause()
 {
     mPaused = true;
-    return 0;
+    return NO_ERROR;
 }
 int WaylandPlugin::resume()
 {
     mPaused = false;
-    return 0;
+    return NO_ERROR;
 }
 
 int WaylandPlugin::closeDisplay()
 {
     RenderBuffer *entity;
-    std::lock_guard<std::mutex> lck(mRenderLock);
+    Tls::Mutex::Autolock _l(mRenderLock);
     mDisplay->closeDisplay();
     while (mQueue->pop((void **)&entity) == Q_OK)
     {
         handleBufferRelease(entity);
     }
 
-    return 0;
+    return NO_ERROR;
 }
 
 int WaylandPlugin::closeWindow()
 {
-    std::lock_guard<std::mutex> lck(mRenderLock);
+    Tls::Mutex::Autolock _l(mRenderLock);
     if (isRunning()) {
-        DEBUG("stop frame post thread");
+        DEBUG(mLogCategory,"stop frame post thread");
         requestExitAndWait();
     }
-    return 0;
+    return NO_ERROR;
 }
 
 
@@ -186,10 +189,10 @@ int WaylandPlugin::getValue(PluginKey key, void *value)
     switch (key) {
         case PLUGIN_KEY_SELECT_DISPLAY_OUTPUT: {
             *(int *)(value) = mDisplay->getDisplayOutput();
-            TRACE("get select display output:%d",*(int *)value);
+            TRACE(mLogCategory,"get select display output:%d",*(int *)value);
         } break;
     }
-    return 0;
+    return NO_ERROR;
 }
 
 int WaylandPlugin::setValue(PluginKey key, void *value)
@@ -209,12 +212,12 @@ int WaylandPlugin::setValue(PluginKey key, void *value)
         } break;
         case PLUGIN_KEY_VIDEO_FORMAT: {
             int videoFormat = *(int *)(value);
-            DEBUG("Set video format :%d",videoFormat);
+            DEBUG(mLogCategory,"Set video format :%d",videoFormat);
             mDisplay->setVideoBufferFormat((RenderVideoFormat)videoFormat);
         } break;
         case PLUGIN_KEY_SELECT_DISPLAY_OUTPUT: {
             int outputIndex = *(int *)(value);
-            DEBUG("Set select display output :%d",outputIndex);
+            DEBUG(mLogCategory,"Set select display output :%d",outputIndex);
             mDisplay->setDisplayOutput(outputIndex);
         } break;
         case PLUGIN_KEY_VIDEO_PIP: {
@@ -224,7 +227,7 @@ int WaylandPlugin::setValue(PluginKey key, void *value)
         } break;
         case PLUGIN_KEY_IMMEDIATELY_OUTPUT: {
             bool mImmediatelyOutput = (*(int *)(value)) > 0? true: false;
-            DEBUG("Set immediately output:%d",mImmediatelyOutput);
+            DEBUG(mLogCategory, "Set immediately output:%d",mImmediatelyOutput);
         } break;
     }
     return 0;
@@ -290,7 +293,7 @@ bool WaylandPlugin::threadLoop()
 
         //drop last expired frame,got a new expired frame
         if (expiredFrameEntity) {
-            WARNING("drop,now:%lld,display:%lld(pts:%lld ms),n-d:%lld ms",
+            WARNING(mLogCategory,"drop,now:%lld,display:%lld(pts:%lld ms),n-d:%lld ms",
                 nowMonotime,expiredFrameEntity->time,expiredFrameEntity->pts/1000000,
                 (nowMonotime - expiredFrameEntity->time)/1000);
             handleFrameDropped(expiredFrameEntity);
@@ -308,7 +311,7 @@ tag_post:
     }
 
     if (mDisplay) {
-        TRACE("post,now:%lld,display:%lld(pts:%lld ms),n-d::%lld ms",
+        TRACE(mLogCategory,"post,now:%lld,display:%lld(pts:%lld ms),n-d::%lld ms",
             nowMonotime,expiredFrameEntity->time,expiredFrameEntity->pts/1000000,
             (nowMonotime - expiredFrameEntity->time)/1000);
         mDisplay->displayFrameBuffer(expiredFrameEntity, expiredFrameEntity->time);
@@ -321,18 +324,23 @@ tag_next:
 
 void *makePluginInstance(int id)
 {
+    int category =Logger_init(id);
     char *env = getenv("VIDEO_RENDER_LOG_LEVEL");
     if (env) {
         int level = atoi(env);
         Logger_set_level(level);
-        INFO("VIDEO_RENDER_LOG_LEVEL=%d",level);
+        INFO(category,"VIDEO_RENDER_LOG_LEVEL=%d",level);
     }
-    WaylandPlugin *pluginInstance = new WaylandPlugin();
+    WaylandPlugin *pluginInstance = new WaylandPlugin(category);
     return static_cast<void *>(pluginInstance);
 }
 
 void destroyPluginInstance(void * plugin)
 {
+    int category;
+
     WaylandPlugin *pluginInstance = static_cast<WaylandPlugin *>(plugin);
+    category = pluginInstance->getLogCategory();
     delete pluginInstance;
+    Logger_exit(category);
 }

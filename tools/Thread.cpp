@@ -27,6 +27,7 @@ pthread_t getThreadId()
 
 Thread::Thread()
     :mThread(pthread_t(-1)),
+    mLock("Thread::mLock"),
     mStatus(0),
     mExitPending(false),
     mRunning(false),
@@ -55,12 +56,14 @@ void Thread::readyToExit()
 
 int Thread::run(const char* name)
 {
-    std::unique_lock<std::mutex> lck(mMutex);
+    Tls::Mutex::Autolock _l(mLock);
     if (mRunning) {
         // thread already started
         return -1;
     }
 
+    // reset status and exitPending to their default value, so we can
+    // try again after an error happened (either below, or in readyToRun())
     mStatus = 0;
     mExitPending = false;
     mThread = pthread_t(-1);
@@ -85,9 +88,10 @@ int Thread::run(const char* name)
         mStatus = -1;   // something happened!
         mRunning = false;
         mThread = pthread_t(-1);
-        mCond.notify_all();
+        mCondition.broadcast();
         return -1;
     }
+
     return 0;
 }
 
@@ -148,7 +152,7 @@ void* Thread::_threadLoop(void* user)
 exit:
     //must call readyToExit before set mRunning to false
     self->readyToExit();
-    std::unique_lock<std::mutex> lck(self->mMutex);
+    Tls::Mutex::Autolock _l(self->mLock);
     self->mExitPending = true;
     // clear thread ID so that requestExitAndWait() does not exit if
     // called by a new thread using the same thread ID as this one.
@@ -156,55 +160,59 @@ exit:
     self->mRunning = false;
     // note that interested observers blocked in requestExitAndWait are
     // awoken by broadcast, but blocked on mLock until break exits scope
-    self->mCond.notify_all();
+    self->mCondition.broadcast();
+
     return 0;
 }
 
 void Thread::requestExit()
 {
-    std::lock_guard<std::mutex> lck(mMutex);
+    Tls::Mutex::Autolock _l(mLock);
     mExitPending = true;
 }
 
 int Thread::requestExitAndWait()
 {
-    std::unique_lock<std::mutex> lck(mMutex);
+    Tls::Mutex::Autolock _l(mLock);
     if (mThread == getThreadId()) {
+
         return -1;
     }
 
     mExitPending = true;
 
     while (mRunning == true) {
-        mCond.wait(lck);
+        mCondition.wait(mLock);
     }
-    // This next line is probably not needed any more, but is being left for
-    // historical reference. Note that each interested party will clear flag.
+
     mExitPending = false;
+
     return mStatus;
 }
 
 int Thread::join()
 {
-    std::unique_lock<std::mutex> lck(mMutex);
+    Tls::Mutex::Autolock _l(mLock);
     if (mThread == getThreadId()) {
+
         return -1;
     }
 
     while (mRunning == true) {
-        mCond.wait(lck);
+        mCondition.wait(mLock);
     }
+
     return mStatus;
 }
 
 bool Thread::isRunning() const {
-    std::lock_guard<std::mutex> lck(mMutex);
+    Tls::Mutex::Autolock _l(mLock);
     return mRunning;
 }
 
 bool Thread::isExitPending() const
 {
-    std::lock_guard<std::mutex> lck(mMutex);
+    Tls::Mutex::Autolock _l(mLock);
     return mExitPending;
 }
 }

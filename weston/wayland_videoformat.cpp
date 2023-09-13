@@ -76,7 +76,7 @@ uint32_t video_format_to_wl_dmabuf_format (RenderVideoFormat format)
             return wl_formats[i].dma_format;
     }
 
-    TRACE("wl dmabuf format not found");
+    TRACE(NO_CAT,"wl dmabuf format not found");
     return 0;
 }
 

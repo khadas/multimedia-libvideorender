@@ -15,7 +15,7 @@
  */
 #ifndef __DRM_FRAME_RECYCLE_H__
 #define __DRM_FRAME_RECYCLE_H__
-#include <mutex>
+#include "Mutex.h"
 #include "Thread.h"
 #include "Queue.h"
 
@@ -25,7 +25,7 @@ struct FrameEntity;
 class DrmFrameRecycle : public Tls::Thread
 {
   public:
-    DrmFrameRecycle(DrmDisplay *drmDisplay);
+    DrmFrameRecycle(DrmDisplay *drmDisplay, int logCategory);
     virtual ~DrmFrameRecycle();
     bool start();
     bool stop();
@@ -36,10 +36,11 @@ class DrmFrameRecycle : public Tls::Thread
     static void queueFlushCallback(void *userdata,void *data);
   private:
     DrmDisplay *mDrmDisplay;
+    int mLogCategory;
 
     bool mStop;
     bool mWaitVideoFence;
-    mutable std::mutex mMutex;
+    mutable Tls::Mutex mMutex;
     Tls::Queue *mQueue;
 };
 

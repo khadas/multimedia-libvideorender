@@ -58,7 +58,7 @@ typedef struct {
 } DrmMesonLib;
 
 
-DrmMesonLib * drmMesonLoadLib();
-int drmMesonUnloadLib(DrmMesonLib *drmMesonLib);
+DrmMesonLib * drmMesonLoadLib(int logCategory);
+int drmMesonUnloadLib(int logCategory,DrmMesonLib *drmMesonLib);
 
 #endif /*__DRM_LIB_WRAP_H__*/

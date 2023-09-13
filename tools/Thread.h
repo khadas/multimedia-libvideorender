@@ -20,8 +20,8 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <pthread.h>
-#include <mutex>
-#include <condition_variable>
+#include "Mutex.h"
+#include "Condition.h"
 
 typedef void* (*pthread_entry_func)(void*);
 #define MAX_THREAD_NAME_LEN 128
@@ -74,14 +74,14 @@ private:
     static  void* _threadLoop(void* user);
     int _createThread(pthread_entry_func entryFunction);
     // always hold mLock when reading or writing
-    pthread_t mThread;
+    pthread_t       mThread;
     char    mThreadName[MAX_THREAD_NAME_LEN];
-    mutable std::mutex mMutex;
-    std::condition_variable mCond;
+    mutable Tls::Mutex   mLock;
+    Tls::Condition       mCondition;
     int        mStatus;
     // note that all accesses of mExitPending and mRunning need to hold mLock
-    volatile bool mExitPending;
-    volatile bool mRunning;
+    volatile bool           mExitPending;
+    volatile bool           mRunning;
     int mPriority;
 };
 }

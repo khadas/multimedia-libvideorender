@@ -116,7 +116,7 @@ class WstClientPlugin;
 
 class WstEssRMgrOps {
 public:
-   WstEssRMgrOps(WstClientPlugin *plugin);
+   WstEssRMgrOps(WstClientPlugin *plugin,int logCategory);
    virtual ~WstEssRMgrOps();
 
    void resMgrInit();
@@ -127,6 +127,7 @@ public:
 
    static void resMgrNotify( EssRMgr *rm, int event, int type, int id, void* userData );
 private:
+   int mLogCategory;
    WstClientPlugin *mPlugin;
    void *mLibHandle;
    EssRMgr *mEssRmgr;

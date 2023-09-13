@@ -15,10 +15,9 @@
  */
 #include <cstring>
 #include "wstclient_wayland.h"
-#include "wstclient_plugin.h"
+#include "ErrorCode.h"
 #include "Logger.h"
-
-#define TAG "rlib:wstclient_wayland"
+#include "wstclient_plugin.h"
 
 #ifndef MAX
 #  define MAX(a,b)  ((a) > (b)? (a) : (b))
@@ -26,6 +25,8 @@
 #endif
 
 #define WESTEROS_UNUSED(x) ((void)(x))
+
+#define TAG "rlib:wstclient_wayland"
 
 #define DEFAULT_WINDOW_X (0)
 #define DEFAULT_WINDOW_Y (0)
@@ -129,7 +130,7 @@ void WstClientWayland::shellSurfaceStatus(void *data,
     WESTEROS_UNUSED(width);
     WESTEROS_UNUSED(height);
 
-    INFO("opacity: %d,zorder:%d", opacity,zorder);
+    INFO(self->mLogCategory,"opacity: %d,zorder:%d", opacity,zorder);
     self->mWindowChange = true;
     self->mOpacity = opacity;
     self->mZorder = zorder;
@@ -157,7 +158,7 @@ void WstClientWayland::vpcVideoPathChange(void *data,
     WESTEROS_UNUSED(wl_vpc_surface);
     WstClientWayland *self = static_cast<WstClientWayland *>(data);
 
-    INFO("new pathway: %d\n", new_pathway);
+    INFO(self->mLogCategory,"new pathway: %d\n", new_pathway);
     self->setVideoPath(new_pathway == WL_VPC_SURFACE_PATHWAY_GRAPHICS);
 }
 
@@ -175,9 +176,9 @@ void WstClientWayland::vpcVideoXformChange(void *data,
     WESTEROS_UNUSED(wl_vpc_surface);
     WstClientWayland *self = static_cast<WstClientWayland *>(data);
 
-    TRACE("x_trans:%d,y_trans:%d,x_scale_num:%d,x_scale_denom:%d,y_scale_num:%d,y_scale_denom:%d",\
+    TRACE(self->mLogCategory,"x_trans:%d,y_trans:%d,x_scale_num:%d,x_scale_denom:%d,y_scale_num:%d,y_scale_denom:%d",\
             x_translation,y_translation,x_scale_num,x_scale_denom,y_scale_num,y_scale_denom);
-    TRACE("output_width:%d,output_height:%d",output_width,output_height);
+    TRACE(self->mLogCategory,"output_width:%d,output_height:%d",output_width,output_height);
     self->mTransX= x_translation;
     self->mTransY= y_translation;
     if ( x_scale_denom )
@@ -193,7 +194,7 @@ void WstClientWayland::vpcVideoXformChange(void *data,
     self->mOutputWidth= (int)output_width;
     self->mOutputHeight= (int)output_height;
 
-    std::lock_guard<std::mutex> lck(self->mMutex);
+    Tls::Mutex::Autolock _l(self->mMutex);
     self->updateVideoPosition();
 }
 
@@ -239,17 +240,17 @@ void WstClientWayland::outputHandleMode( void *data,
         //output resolution is a fixed value(1920x1080)
         width = DEFAULT_OUTPUT_WIDTH;
         height = DEFAULT_OUTPUT_HEIGHT;
-        std::lock_guard<std::mutex> lck(self->mMutex);
+        Tls::Mutex::Autolock _l(self->mMutex);
         self->mDisplayWidth = width;
         self->mDisplayHeight = height;
-        DEBUG("compositor sets window to (%dx%d)\n", width, height);
+        DEBUG(self->mLogCategory,"compositor sets window to (%dx%d)\n", width, height);
         if (!self->mWindowSet)
         {
             self->mWindowWidth = width;
             self->mWindowHeight = height;
             if (self->mWlVpcSurface)
             {
-                TRACE("set window geometry:x:%d,y:%d,w:%d,h:%d",self->mWindowX,self->mWindowY,self->mWindowWidth,self->mWindowHeight);
+                TRACE(self->mLogCategory,"set window geometry:x:%d,y:%d,w:%d,h:%d",self->mWindowX,self->mWindowY,self->mWindowWidth,self->mWindowHeight);
                 wl_vpc_surface_set_geometry(self->mWlVpcSurface, self->mWindowX, self->mWindowY, self->mWindowWidth, self->mWindowHeight);
             }
         }
@@ -284,7 +285,7 @@ void WstClientWayland::sbFormat(void *data, struct wl_sb *wl_sb, uint32_t format
     WstClientWayland *self = static_cast<WstClientWayland *>(data);
     WESTEROS_UNUSED(wl_sb);
     WESTEROS_UNUSED(data);
-    TRACE("registry: sbFormat: %X\n", format);
+    TRACE(self->mLogCategory,"registry: sbFormat: %X\n", format);
 }
 
 static const struct wl_sb_listener sbListener = {
@@ -296,31 +297,31 @@ WstClientWayland::registryHandleGlobal (void *data, struct wl_registry *registry
     uint32_t id, const char *interface, uint32_t version)
 {
     WstClientWayland *self = static_cast<WstClientWayland *>(data);
-    TRACE("registryHandleGlobal,interface:%s,version:%d",interface,version);
+    TRACE(self->mLogCategory,"registryHandleGlobal,interface:%s,version:%d",interface,version);
 
     if (strcmp (interface, "wl_compositor") == 0) {
         self->mWlCompositor = (struct wl_compositor *)wl_registry_bind (registry, id, &wl_compositor_interface, 1/*MIN (version, 3)*/);
         wl_proxy_set_queue((struct wl_proxy*)self->mWlCompositor, self->mWlQueue);
-        TRACE("registry: compositor %p\n", (void*)self->mWlCompositor);
+        TRACE(self->mLogCategory,"registry: compositor %p\n", (void*)self->mWlCompositor);
     } else if (strcmp (interface, "wl_simple_shell") == 0) {
         self->mWlShell = (struct wl_simple_shell*)wl_registry_bind(registry, id, &wl_simple_shell_interface, 1);
         wl_proxy_set_queue((struct wl_proxy*)self->mWlShell, self->mWlQueue);
         wl_simple_shell_add_listener(self->mWlShell, &shellListener, (void *)self);
-        TRACE("registry: simple shell %p\n", (void*)self->mWlShell);
+        TRACE(self->mLogCategory,"registry: simple shell %p\n", (void*)self->mWlShell);
     } else if (strcmp (interface, "wl_vpc") == 0) {
         self->mWlVpc = (struct wl_vpc*)wl_registry_bind(registry, id, &wl_vpc_interface, 1);
         wl_proxy_set_queue((struct wl_proxy*)self->mWlVpc, self->mWlQueue);
-        TRACE("registry: vpc %p\n", (void*)self->mWlVpc);
+        TRACE(self->mLogCategory,"registry: vpc %p\n", (void*)self->mWlVpc);
     } else if (strcmp (interface, "wl_output") == 0) {
         self->mWlOutput = (struct wl_output*)wl_registry_bind(registry, id, &wl_output_interface, 2);
         wl_proxy_set_queue((struct wl_proxy*)self->mWlOutput, self->mWlQueue);
         wl_output_add_listener(self->mWlOutput, &outputListener, (void *)self);
-        TRACE("registry: output %p\n", (void*)self->mWlOutput);
+        TRACE(self->mLogCategory,"registry: output %p\n", (void*)self->mWlOutput);
     } else if (strcmp (interface, "wl_sb") == 0) {
         self->mWlSb = (struct wl_sb*)wl_registry_bind(registry, id, &wl_sb_interface, version);
         wl_proxy_set_queue((struct wl_proxy*)self->mWlSb, self->mWlQueue);
         wl_sb_add_listener(self->mWlSb, &sbListener, (void *)self);
-        TRACE("registry: sb %p\n", (void*)self->mWlSb);
+        TRACE(self->mLogCategory,"registry: sb %p\n", (void*)self->mWlSb);
     }
 }
 
@@ -329,7 +330,7 @@ WstClientWayland::registryHandleGlobalRemove (void *data, struct wl_registry *re
 {
     WstClientWayland *self = static_cast<WstClientWayland *>(data);
     /* temporarily do nothing */
-    DEBUG("wayland display remove registry handle global");
+    DEBUG(self->mLogCategory,"wayland display remove registry handle global");
 }
 
 static const struct wl_registry_listener registry_listener = {
@@ -337,10 +338,12 @@ static const struct wl_registry_listener registry_listener = {
     WstClientWayland::registryHandleGlobalRemove
 };
 
-WstClientWayland::WstClientWayland(WstClientPlugin *plugin)
-    :mPlugin(plugin)
+WstClientWayland::WstClientWayland(WstClientPlugin *plugin, int logCategory)
+    :mMutex("bufferMutex"),
+    mPlugin(plugin),
+    mLogCategory(logCategory)
 {
-    TRACE("construct WstClientWayland");
+    TRACE(mLogCategory,"construct WstClientWayland");
     mWlDisplay = NULL;
     mWlQueue = NULL;
     mWlRegistry = NULL;
@@ -375,11 +378,16 @@ WstClientWayland::WstClientWayland(WstClientPlugin *plugin)
     mScaleXDenom = 0;
     mScaleYDenom = 0;
     mForceFullScreen = false;
+    mPoll = new Tls::Poll(true);
 }
 
 WstClientWayland::~WstClientWayland()
 {
-    TRACE("deconstruct WstClientWayland");
+    TRACE(mLogCategory,"deconstruct WstClientWayland");
+    if (mPoll) {
+        delete mPoll;
+        mPoll = NULL;
+    }
 }
 
 int WstClientWayland::connectToWayland()
@@ -388,40 +396,40 @@ int WstClientWayland::connectToWayland()
     const char *displayEnv = NULL;
     const char *displayName = "rlib-display";
     const char *fullScreenEnV = NULL;
-    DEBUG("in");
+    DEBUG(mLogCategory,"in");
     xdgEnv = getenv("XDG_RUNTIME_DIR");
-    INFO("XDG_RUNTIME_DIR:%s",xdgEnv != NULL?xdgEnv:"NULL");
+    INFO(mLogCategory,"XDG_RUNTIME_DIR:%s",xdgEnv != NULL?xdgEnv:"NULL");
     if (!xdgEnv) {
         xdgEnv = "/run";
-        ERROR("XDG_RUNTIME_DIR is not set,set default %s",xdgEnv);
+        ERROR(mLogCategory,"XDG_RUNTIME_DIR is not set,set default %s",xdgEnv);
     }
     displayEnv= getenv("WAYLAND_DISPLAY");
-    INFO("WAYLAND_DISPLAY:%s",displayEnv != NULL?displayEnv:"NULL");
+    INFO(mLogCategory,"WAYLAND_DISPLAY:%s",displayEnv != NULL?displayEnv:"NULL");
 
     fullScreenEnV= getenv("VIDEO_RENDER_FORCE_FULLSCREEN");
-    INFO("VIDEO_RENDER_FORCE_FULLSCREEN:%s",fullScreenEnV != NULL?fullScreenEnV:"NULL");
+    INFO(mLogCategory,"VIDEO_RENDER_FORCE_FULLSCREEN:%s",fullScreenEnV != NULL?fullScreenEnV:"NULL");
     if (fullScreenEnV) {
         int force = atoi(fullScreenEnV);
         mForceFullScreen = force != 0? true: false;
-        INFO("VIDEO_RENDER_FORCE_FULLSCREEN:%d",mForceFullScreen);
+        INFO(mLogCategory,"VIDEO_RENDER_FORCE_FULLSCREEN:%d",mForceFullScreen);
     }
 
     mWlDisplay = wl_display_connect(NULL);
     if (!mWlDisplay) {
         char waylandDisplay[64];
-        ERROR("Failed connect to default wayland display");
+        ERROR(mLogCategory,"Failed connect to default wayland display");
         memset(waylandDisplay, 0, 64);
         strcpy(waylandDisplay, xdgEnv);
         strcat(waylandDisplay, "/" );
         strcat(waylandDisplay, displayName);
-        INFO("detect rlib wayland display %s",waylandDisplay);
+        INFO(mLogCategory,"detect rlib wayland display %s",waylandDisplay);
         if (access(waylandDisplay,F_OK) == 0) {
-            INFO("try to connect to %s",waylandDisplay);
+            INFO(mLogCategory,"try to connect to %s",waylandDisplay);
             mWlDisplay = wl_display_connect(displayName);
         }
         /*try to create wayland display my self*/
         if (!mWlDisplay && xdgEnv) {
-            WARNING("try to create and connect rlib-display display");
+            WARNING(mLogCategory,"try to create and connect rlib-display display");
             std::string cmdCreateDisplay = R"(curl 'http://127.0.0.1:9998/jsonrpc' -d '{"jsonrpc": "2.0","id": 4,"method":
                 "org.rdk.RDKShell.1.createDisplay","params": { "client": "rlib-display", "displayName": "rlib-display" }}';echo)";
             std::string cmdMoveDisplay = R"(curl 'http://127.0.0.1:9998/jsonrpc' -d '{"jsonrpc": "2.0","id": 4,"method":
@@ -434,10 +442,10 @@ int WstClientWayland::connectToWayland()
         }
 
         if (!mWlDisplay) {
-            ERROR( "wayland connect rlib-display fail");
-            return -1;
+            ERROR(mLogCategory, "wayland connect rlib-display fail");
+            return ERROR_OPEN_FAIL;
         }
-        INFO("wayland connected to rlib-display");
+        INFO(mLogCategory,"wayland connected to rlib-display");
     }
 
     mWlQueue = wl_display_create_queue (mWlDisplay);
@@ -449,8 +457,8 @@ int WstClientWayland::connectToWayland()
     /* we need exactly 2 roundtrips to discover global objects and their state */
     for (int i = 0; i < 2; i++) {
         if (wl_display_roundtrip_queue (mWlDisplay, mWlQueue) < 0) {
-            ERROR("Error communicating with the wayland display");
-            return -1;
+            ERROR(mLogCategory,"Error communicating with the wayland display");
+            return ERROR_OPEN_FAIL;
         }
     }
 
@@ -471,16 +479,19 @@ int WstClientWayland::connectToWayland()
         }
     }
 
-    DEBUG("out");
-    return 0;
+    INFO(mLogCategory,"out");
+    return NO_ERROR;
 }
 
 void WstClientWayland::disconnectFromWayland()
 {
-    DEBUG("in");
+    INFO(mLogCategory,"in");
 
    if (isRunning()) {
-        TRACE("try stop dispatch thread");
+        TRACE(mLogCategory,"try stop dispatch thread");
+        if (mPoll) {
+            mPoll->setFlushing(true);
+        }
         requestExitAndWait();
     }
 
@@ -532,16 +543,17 @@ void WstClientWayland::disconnectFromWayland()
     if (mWlDisplay) {
         wl_display_flush (mWlDisplay);
         wl_display_disconnect (mWlDisplay);
+        INFO(mLogCategory,"wl display disconnect");
         mWlDisplay = NULL;
     }
 
-    DEBUG("out");
+    INFO(mLogCategory,"out");
 }
 
 void WstClientWayland::setWindowSize(int x, int y, int w, int h)
 {
     if (x == 0 && y == 0 && w == 0 && h == 0) {
-        WARNING( "set full screen? %dx%dx%dx%d",x,y,w,h);
+        WARNING(mLogCategory, "set full screen? %dx%dx%dx%d",x,y,w,h);
         return;
     }
     mWindowX = x;
@@ -551,9 +563,9 @@ void WstClientWayland::setWindowSize(int x, int y, int w, int h)
     mWindowChange = true;
     mWindowSet = true;
     mWindowSizeOverride = true;
-    DEBUG("set window size:x:%d,y:%d,w:%d,h:%d",x,y,w,h);
+    DEBUG(mLogCategory,"set window size:x:%d,y:%d,w:%d,h:%d",x,y,w,h);
     if (mWlVpcSurface) {
-        DEBUG( "wl_vpc_surface_set_geometry(%d,%d,%d,%d)",mWindowX,mWindowY,mWindowWidth,mWindowHeight);
+        DEBUG(mLogCategory, "wl_vpc_surface_set_geometry(%d,%d,%d,%d)",mWindowX,mWindowY,mWindowWidth,mWindowHeight);
         wl_vpc_surface_set_geometry(mWlVpcSurface, mWindowX, mWindowY, mWindowWidth, mWindowHeight);
     }
     //if window size is updated, update video position
@@ -566,11 +578,11 @@ void WstClientWayland::setWindowSize(int x, int y, int w, int h)
 void WstClientWayland::setFrameSize(int frameWidth, int frameHeight) {
     mFrameWidth = frameWidth;
     mFrameHeight = frameHeight;
-    DEBUG( "set frame size:%dx%d",mFrameWidth, mFrameHeight);
+    DEBUG(mLogCategory, "set frame size:%dx%d",mFrameWidth, mFrameHeight);
 }
 
 void WstClientWayland::setZoomMode(int zoomMode, bool globalZoomActive, bool allow4kZoom) {
-    DEBUG( "zoomMode:%d, globalZoomActive:%d, allow4kZoom:%d",zoomMode,globalZoomActive,allow4kZoom);
+    DEBUG(mLogCategory, "zoomMode:%d, globalZoomActive:%d, allow4kZoom:%d",zoomMode,globalZoomActive,allow4kZoom);
     mZoomModeGlobal = globalZoomActive;
     if ( !globalZoomActive )
     {
@@ -585,7 +597,7 @@ void WstClientWayland::setZoomMode(int zoomMode, bool globalZoomActive, bool all
             mPixelAspectRatioChanged = true;
         }
     } else {
-        DEBUG( "global zoom disabled: ignore server value");
+        DEBUG(mLogCategory, "global zoom disabled: ignore server value");
     }
 }
 
@@ -605,7 +617,7 @@ void WstClientWayland::getVideoBounds(int *x, int *y, int *w, int *h)
         *y = mWindowY;
         *w = mWindowWidth;
         *h = mWindowHeight;
-        TRACE( "no wldisplay, %d,%d,%d,%d",mVideoX,mVideoY,mVideoWidth,mVideoHeight);
+        TRACE(mLogCategory, "no wldisplay, %d,%d,%d,%d",mVideoX,mVideoY,mVideoWidth,mVideoHeight);
         return;
     }
 
@@ -620,14 +632,14 @@ void WstClientWayland::getVideoBounds(int *x, int *y, int *w, int *h)
     vw = mVideoWidth;
     vh = mVideoHeight;
 
-    TRACE( "videoX:%d,videoY:%d,videoW:%d,videoH:%d",mVideoX,mVideoY,mVideoWidth,mVideoHeight);
+    TRACE(mLogCategory, "videoX:%d,videoY:%d,videoW:%d,videoH:%d",mVideoX,mVideoY,mVideoWidth,mVideoHeight);
     //if the window size is smaller than display size,we scall video to map window size
     if (mWindowWidth != mDisplayWidth || mWindowHeight != mDisplayHeight) {
         *x= vx;
         *y= vy;
         *w= vw;
         *h= vh;
-        TRACE("small window vrect %d, %d, %d, %d", vx, vy, vw, vh);
+        TRACE(mLogCategory, "small window vrect %d, %d, %d, %d", vx, vy, vw, vh);
         return;
     }
     if (mForceFullScreen) {
@@ -635,7 +647,7 @@ void WstClientWayland::getVideoBounds(int *x, int *y, int *w, int *h)
         *y= vy;
         *w= vw;
         *h= vh;
-        TRACE("force window vrect %d, %d, %d, %d", vx, vy, vw, vh);
+        TRACE(mLogCategory, "force window vrect %d, %d, %d, %d", vx, vy, vw, vh);
         return;
     }
 
@@ -645,12 +657,12 @@ void WstClientWayland::getVideoBounds(int *x, int *y, int *w, int *h)
     contentHeight = frameHeight;
 
     if (mPixelAspectRatioChanged)
-        DEBUG("pixelAspectRatio: %f zoom-mode %d", mPixelAspectRatio, mZoomMode);
+        DEBUG(mLogCategory,"pixelAspectRatio: %f zoom-mode %d", mPixelAspectRatio, mZoomMode);
 
     ard = (double)mVideoWidth/(double)mVideoHeight;
     arf = (double)contentWidth/(double)contentHeight;
 
-    TRACE( "frameWidth:%d,frameHeight:%d,contentWidth:%f,contentHeight:%f",frameWidth,frameHeight,contentWidth,contentHeight);
+    TRACE(mLogCategory, "frameWidth:%d,frameHeight:%d,contentWidth:%f,contentHeight:%f",frameWidth,frameHeight,contentWidth,contentHeight);
 
     /* Establish region of interest */
     roix = 0;
@@ -664,7 +676,7 @@ void WstClientWayland::getVideoBounds(int *x, int *y, int *w, int *h)
         zoomMode= ZOOM_NORMAL;
     }
     //if (mPixelAspectRatioChanged )
-        TRACE("ard %f arf %f", ard, arf);
+        TRACE(mLogCategory, "ard %f arf %f", ard, arf);
     switch ( zoomMode )
     {
         case ZOOM_NORMAL:
@@ -707,7 +719,7 @@ void WstClientWayland::getVideoBounds(int *x, int *y, int *w, int *h)
                 /* For 16:9 content on a 16:9 display, stretch as though 4:3 */
                 hfactor= 4.0/3.0;
                 if (mPixelAspectRatioChanged )
-                    DEBUG("stretch apply vfactor %f hfactor %f", vfactor, hfactor);
+                    DEBUG(mLogCategory, "stretch apply vfactor %f hfactor %f", vfactor, hfactor);
             }
             vh = mVideoHeight * (1.0);
             vw = vh*hfactor*16/9;
@@ -733,7 +745,7 @@ void WstClientWayland::getVideoBounds(int *x, int *y, int *w, int *h)
                     vfactor= 4.0/3.0;
                     hfactor= 1.0;
                     if (mPixelAspectRatioChanged )
-                        DEBUG("zoom apply vfactor %f hfactor %f", vfactor, hfactor);
+                        DEBUG(mLogCategory, "zoom apply vfactor %f hfactor %f", vfactor, hfactor);
                 }
                 vh = mVideoHeight * vfactor * (1.0);
                 vw = (roiw * vh) * hfactor / roih;
@@ -750,7 +762,7 @@ void WstClientWayland::getVideoBounds(int *x, int *y, int *w, int *h)
         }
         break;
     }
-    if (mPixelAspectRatioChanged) DEBUG("vrect %d, %d, %d, %d", vx, vy, vw, vh);
+    if (mPixelAspectRatioChanged) DEBUG(mLogCategory, "vrect %d, %d, %d, %d", vx, vy, vw, vh);
     if (mPixelAspectRatioChanged)
     {
         if (mWlDisplay && mWlVpcSurface )
@@ -764,12 +776,12 @@ void WstClientWayland::getVideoBounds(int *x, int *y, int *w, int *h)
     *y= vy;
     *w= vw;
     *h= vh;
-    TRACE("vrect %d, %d, %d, %d", vx, vy, vw, vh);
+    TRACE(mLogCategory, "vrect %d, %d, %d, %d", vx, vy, vw, vh);
 }
 
 void WstClientWayland::setTextureCrop(int vx, int vy, int vw, int vh)
 {
-    DEBUG("vx %d vy %d vw %d vh %d window(%d, %d, %d, %d) display(%dx%d)", \
+    DEBUG(mLogCategory, "vx %d vy %d vw %d vh %d window(%d, %d, %d, %d) display(%dx%d)", \
              vx, vy, vw, vh, mWindowX, mWindowY, mWindowWidth, mWindowHeight, mDisplayWidth, mDisplayHeight);
     if ( (mDisplayWidth != -1) && (mDisplayHeight != -1) &&
         ( (vx < 0) || (vx+vw > mDisplayWidth) ||
@@ -869,7 +881,7 @@ void WstClientWayland::setTextureCrop(int vx, int vy, int vw, int vh)
         cropy= (cropy*WL_VPC_SURFACE_CROP_DENOM)/mWindowHeight;
         cropw= (cropw*WL_VPC_SURFACE_CROP_DENOM)/mWindowWidth;
         croph= (croph*WL_VPC_SURFACE_CROP_DENOM)/mWindowHeight;
-        DEBUG("%d, %d, %d, %d - %d, %d, %d, %d", vx, vy, vw, vh, cropx, cropy, cropw, croph);
+        DEBUG(mLogCategory,"%d, %d, %d, %d - %d, %d, %d, %d", vx, vy, vw, vh, cropx, cropy, cropw, croph);
         if (mWlVpcSurface) {
             wl_vpc_surface_set_geometry_with_crop(mWlVpcSurface, vx, vy, vw, vh, cropx, cropy, cropw, croph );
         }
@@ -884,7 +896,7 @@ void WstClientWayland::setTextureCrop(int vx, int vy, int vw, int vh)
 
 void WstClientWayland::setForceAspectRatio(bool force)
 {
-    DEBUG( "force aspect ratio:%d",force);
+    DEBUG(mLogCategory, "force aspect ratio:%d",force);
     mForceAspectRatio = force;
 }
 
@@ -892,7 +904,7 @@ void WstClientWayland::setPixelAspectRatio(double ratio)
 {
     mPixelAspectRatio = ratio;
     mPixelAspectRatioChanged = true;
-    INFO( "set aspect ratio:%f",ratio);
+    INFO(mLogCategory, "set aspect ratio:%f",ratio);
 }
 
 void WstClientWayland::updateVideoPosition()
@@ -910,7 +922,7 @@ void WstClientWayland::updateVideoPosition()
         mVideoY= ((mWindowY*mScaleYNum)/mScaleYDenom) + mTransY;
         mVideoWidth= (mWindowWidth*mScaleXNum)/mScaleXDenom;
         mVideoHeight= (mWindowHeight*mScaleYNum)/mScaleYDenom;
-        DEBUG( "window override video rectangle(%d,%d,%d,%d)",mVideoX,mVideoY,mVideoWidth,mVideoHeight);
+        DEBUG(mLogCategory, "window override video rectangle(%d,%d,%d,%d)",mVideoX,mVideoY,mVideoWidth,mVideoHeight);
     }
     else
     {
@@ -918,7 +930,7 @@ void WstClientWayland::updateVideoPosition()
         mVideoY = mTransY;
         mVideoWidth = (mOutputWidth*mScaleXNum)/mScaleXDenom;
         mVideoHeight = (mOutputHeight*mScaleYNum)/mScaleYDenom;
-        DEBUG( "video rectangle(%d,%d,%d,%d)",mVideoX,mVideoY,mVideoWidth,mVideoHeight);
+        DEBUG(mLogCategory, "video rectangle(%d,%d,%d,%d)",mVideoX,mVideoY,mVideoWidth,mVideoHeight);
     }
 
     if (vx == mVideoX && vy == mVideoY && vw == mVideoWidth && vh == mVideoHeight) {
@@ -950,7 +962,7 @@ void WstClientWayland::updateVideoPosition()
 
 void WstClientWayland::setVideoPath(bool useGfxPath )
 {
-    INFO("useGfxPath:%d",useGfxPath);
+    INFO(mLogCategory,"useGfxPath:%d",useGfxPath);
     if ( needBounds() && mWlVpcSurface )
     {
         /* Use nominal display size provided to us by
@@ -968,7 +980,7 @@ void WstClientWayland::setVideoPath(bool useGfxPath )
         mVideoWidth = mWindowWidth;
         mVideoHeight = mWindowHeight;
 
-        DEBUG( "video rect (%d,%d,%d,%d)",mVideoX,mVideoY,mVideoWidth,mVideoHeight);
+        DEBUG(mLogCategory, "video rect (%d,%d,%d,%d)",mVideoX,mVideoY,mVideoWidth,mVideoHeight);
 
         if (mFrameWidth > 0 && mFrameHeight > 0) {
             getVideoBounds(&vx, &vy, &vw, &vh);
@@ -1005,6 +1017,10 @@ bool WstClientWayland::approxEqual( double v1, double v2 )
 void WstClientWayland::readyToRun()
 {
     mFd = wl_display_get_fd (mWlDisplay);
+    if (mPoll) {
+        mPoll->addFd(mFd);
+        mPoll->setFdReadable(mFd, true);
+    }
 }
 
 bool WstClientWayland::threadLoop()
@@ -1016,16 +1032,13 @@ bool WstClientWayland::threadLoop()
       wl_display_dispatch_queue_pending (mWlDisplay, mWlQueue);
     }
 
-    pfd.fd = mFd;
-    pfd.events = POLLERR | POLLNVAL | POLLHUP |POLLIN | POLLPRI | POLLRDNORM;
-    pfd.revents = 0;
-
     wl_display_flush (mWlDisplay);
 
-    /*poll timeout value must > 300 ms,otherwise zwp_linux_dmabuf will create failed*/
-    ret = poll(&pfd, 1, 500);
+    /*poll timeout value must > 300 ms,otherwise zwp_linux_dmabuf will create failed,
+     so do use -1 to wait for ever*/
+    ret = mPoll->wait(-1); //wait for ever
     if (ret < 0) { //poll error
-        WARNING("poll error");
+        WARNING(mLogCategory,"poll error");
         wl_display_cancel_read(mWlDisplay);
         return false;
     } else if (ret == 0) { //poll time out
@@ -1039,15 +1052,15 @@ bool WstClientWayland::threadLoop()
     wl_display_dispatch_queue_pending (mWlDisplay, mWlQueue);
     return true;
 tag_error:
-    ERROR("Error communicating with the wayland server");
+    ERROR(mLogCategory,"Error communicating with the wayland server");
     return false;
 }
 
 void WstClientWayland::executeCmd(const char *cmd) {
-    INFO("%s", cmd);
+    INFO(mLogCategory,"%s", cmd);
     FILE* pFile = popen(cmd, "r");
     char buf[128];
     char* retStr = fgets(buf, sizeof(buf), pFile);
-    INFO("ret= %s", retStr);
+    INFO(mLogCategory,"ret= %s", retStr);
     pclose(pFile);
 }

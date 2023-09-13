@@ -20,7 +20,6 @@
 #include <pthread.h>
 #include <poll.h>
 #include <list>
-#include <mutex>
 #include <unordered_map>
 #include <wayland-client-protocol.h>
 #include <wayland-client.h>
@@ -31,6 +30,7 @@
 #include "viewporter-client-protocol.h"
 #include "wayland-cursor.h"
 #include "Thread.h"
+#include "Poll.h"
 #include "render_plugin.h"
 
 using namespace std;
@@ -43,7 +43,7 @@ class WaylandBuffer;
 
 class WaylandDisplay : public Tls::Thread{
   public:
-    WaylandDisplay(WaylandPlugin *plugin);
+    WaylandDisplay(WaylandPlugin *plugin, int logCategory);
     virtual ~WaylandDisplay();
     /**
      * @brief connet client to compositor server
@@ -257,16 +257,19 @@ class WaylandDisplay : public Tls::Thread{
     int mNextOutput; //the count of wl_output,
     int mActiveOutput; //default is primary output
 
+    int mLogCategory;
+
     std::list<uint32_t> mShmFormats;
     std::unordered_map<uint32_t, uint64_t> mDmaBufferFormats;
     RenderVideoFormat mBufferFormat;
 
-    mutable std::mutex mBufferMutex;
-    mutable std::mutex mMutex;
+    mutable Tls::Mutex mBufferMutex;
+    mutable Tls::Mutex mMutex;
     int mFd;
+    Tls::Poll *mPoll;
 
     /*the followed is windows variable*/
-    mutable std::mutex mRenderMutex;
+    mutable Tls::Mutex mRenderMutex;
     struct wl_surface *mAreaSurface;
     struct wl_surface *mAreaSurfaceWrapper;
     struct wl_surface *mVideoSurface;
@@ -278,7 +281,8 @@ class WaylandDisplay : public Tls::Thread{
     struct wp_viewport *mVideoViewport;
     WaylandShmBuffer *mAreaShmBuffer;
     bool mXdgSurfaceConfigured;
-    std::mutex mConfigureMutex;
+    Tls::Condition mConfigureCond;
+    Tls::Mutex mConfigureMutex;
     bool mFullScreen; //default full screen
 
     bool mIsSendPtsToWeston;

@@ -80,6 +80,9 @@ LOCAL_CFLAGS += \
 
 OBJ_CLIENT_LIB += \
 	$(TOOLS_PATH)/Thread.o \
+	$(TOOLS_PATH)/Poll.o \
+	$(TOOLS_PATH)/Times.o \
+	$(TOOLS_PATH)/Utils.o \
 	$(TOOLS_PATH)/Logger.o
 
 LOCAL_CFLAGS += -fPIC -O -Wcpp -g

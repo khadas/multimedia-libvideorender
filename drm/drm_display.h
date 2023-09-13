@@ -20,7 +20,7 @@
 #include <xf86drmMode.h>
 #include <drm_fourcc.h>
 #include <linux/videodev2.h>
-#include <mutex>
+#include "Mutex.h"
 #include "Thread.h"
 #include "Queue.h"
 #include "drm_plugin.h"
@@ -40,7 +40,7 @@ class DrmFrameRecycle;
 class DrmDisplay
 {
   public:
-    DrmDisplay(DrmPlugin *plugin);
+    DrmDisplay(DrmPlugin *plugin, int logCategory);
     virtual ~DrmDisplay();
     bool start(bool pip);
     bool stop();
@@ -100,10 +100,11 @@ class DrmDisplay
     void destroyFrameEntity(FrameEntity * frameEntity);
 
     DrmPlugin *mPlugin;
+    int mLogCategory;
 
     DrmMesonLib *mDrmMesonLib; //libdrm meson dlopen handle
 
-    mutable std::mutex mMutex;
+    mutable Tls::Mutex mMutex;
 
     bool mIsPip;
     RenderVideoFormat mVideoFormat;

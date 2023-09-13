@@ -19,7 +19,6 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <poll.h>
-#include <mutex>
 #include <list>
 #include <wayland-client.h>
 #include "xdg-shell-client-protocol.h"
@@ -31,6 +30,7 @@
 #include "vpc-client-protocol.h"
 #include "simplebuffer-client-protocol.h"
 #include "Thread.h"
+#include "Poll.h"
 #include "render_common.h"
 #include "wstclient_socket.h"
 
@@ -40,7 +40,7 @@ class WstClientPlugin;
 
 class WstClientWayland : public Tls::Thread{
   public:
-    WstClientWayland(WstClientPlugin *plugin);
+    WstClientWayland(WstClientPlugin *plugin, int logCategory);
     virtual ~WstClientWayland();
     /**
      * @brief connet client to compositor server
@@ -176,6 +176,8 @@ class WstClientWayland : public Tls::Thread{
     struct wl_registry *mWlRegistry;
     struct wl_compositor *mWlCompositor;
 
+    int mLogCategory;
+
     int mTransX;
     int mTransY;
     int mScaleXNum;
@@ -216,8 +218,9 @@ class WstClientWayland : public Tls::Thread{
     bool mZoomModeGlobal;
     bool mAllow4kZoom;
 
-    mutable std::mutex mMutex;
+    mutable Tls::Mutex mMutex;
     int mFd;
+    Tls::Poll *mPoll;
 
     bool mForceFullScreen;
 };

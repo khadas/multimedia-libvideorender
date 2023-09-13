@@ -15,7 +15,6 @@
  */
 #ifndef __WAYLAND_PLUGIN_H__
 #define __WAYLAND_PLUGIN_H__
-#include <mutex>
 #include "render_plugin.h"
 #include "wayland_display.h"
 #include "Thread.h"
@@ -24,7 +23,7 @@
 class WaylandPlugin : public RenderPlugin, public Tls::Thread
 {
   public:
-    WaylandPlugin();
+    WaylandPlugin(int logCatgory);
     virtual ~WaylandPlugin();
     virtual void init();
     virtual void release();
@@ -40,6 +39,9 @@ class WaylandPlugin : public RenderPlugin, public Tls::Thread
     virtual int closeWindow();
     virtual int getValue(PluginKey key, void *value);
     virtual int setValue(PluginKey key, void *value);
+    int getLogCategory() {
+        return mLogCategory;
+    };
     //thread func
     void readyToRun();
     virtual bool threadLoop();
@@ -54,7 +56,9 @@ class WaylandPlugin : public RenderPlugin, public Tls::Thread
     PluginCallback *mCallback;
     WaylandDisplay *mDisplay;
 
-    mutable std::mutex mRenderLock;
+    int mLogCategory;
+
+    mutable Tls::Mutex mRenderLock;
     int mFrameWidth;
     int mFrameHeight;
 

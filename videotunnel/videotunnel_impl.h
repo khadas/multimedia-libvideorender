@@ -16,7 +16,9 @@
 #ifndef __VIDEO_TUNNEL_IMPLEMENT_H__
 #define __VIDEO_TUNNEL_IMPLEMENT_H__
 #include <unordered_map>
+#include "Mutex.h"
 #include "Thread.h"
+#include "Poll.h"
 #include "videotunnel_lib_wrap.h"
 
 class VideoTunnelPlugin;
@@ -24,7 +26,7 @@ class VideoTunnelPlugin;
 class VideoTunnelImpl : public Tls::Thread
 {
   public:
-    VideoTunnelImpl(VideoTunnelPlugin *plugin);
+    VideoTunnelImpl(VideoTunnelPlugin *plugin, int logCategory);
     virtual ~VideoTunnelImpl();
     bool init();
     bool release();
@@ -45,8 +47,11 @@ class VideoTunnelImpl : public Tls::Thread
   private:
     void waitFence(int fence);
     VideoTunnelPlugin *mPlugin;
-    mutable std::mutex mMutex;
+    mutable Tls::Mutex mMutex;
     VideotunnelLib *mVideotunnelLib;
+
+    int mLogCategory;
+
     int mFd;
     int mInstanceId;
     bool mIsVideoTunnelConnected;
@@ -59,6 +64,7 @@ class VideoTunnelImpl : public Tls::Thread
 
     int mFrameWidth;
     int mFrameHeight;
+    Tls::Poll *mPoll;
     int64_t mLastDisplayTime;
     bool mSignalFirstFrameDiplayed;
     bool mUnderFlowDetect;

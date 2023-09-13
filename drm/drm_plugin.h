@@ -22,7 +22,7 @@ class DrmDisplay;
 class DrmPlugin : public RenderPlugin
 {
   public:
-    DrmPlugin();
+    DrmPlugin(int category);
     virtual ~DrmPlugin();
     virtual void init();
     virtual void release();
@@ -46,9 +46,15 @@ class DrmPlugin : public RenderPlugin
     virtual void handleFrameDropped(RenderBuffer *buffer);
     //handle msg to render core
     void handleMsgNotify(int type, void *detail);
+    int getLogCategory() {
+        return mLogCategory;
+    };
   private:
     PluginCallback *mCallback;
     DrmDisplay *mDrmDisplay;
+
+    int mLogCategory;
+
     bool mIsPip;
 
     RenderVideoFormat mVideoFormat;

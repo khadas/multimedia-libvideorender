@@ -30,16 +30,60 @@
 #include <cutils/log.h>
 #include "Logger.h"
 
+#define MAX_USER_TAG 8
 #define MAX_TAG_LENGTH 64
 #define MAX_FILENAME_LENGTH 128
 #define MAX_LOG_BUFFER 1024
 
 static long long getCurrentTimeMillis(void);
+typedef struct {
+    char tag[MAX_TAG_LENGTH]; //user print tag
+    bool active;
+} UserTag;
 
 static int g_activeLevel= 2;
 static FILE * g_fd = stderr;
-static char g_fileName[MAX_FILENAME_LENGTH] = {0};
+static char g_fileName[MAX_FILENAME_LENGTH];
+static UserTag g_userTag[MAX_USER_TAG];
+static int g_activeUserTag = 0;
 static std::mutex g_mutext;
+static int g_init = 0;
+
+int Logger_init(int id)
+{
+    int category = NO_CAT;
+
+    g_mutext.lock();
+    if (g_init == 0) {
+        g_init = 1;
+        memset(g_fileName, 0 , MAX_FILENAME_LENGTH);
+        for (int i = 0; i < MAX_USER_TAG; i++) {
+            g_userTag[i].active = false;
+        }
+    }
+    for (int i = 0; i < MAX_USER_TAG; i++) {
+        if (g_userTag[i].active == false) {
+            g_userTag[i].active = true;
+            category = i;
+            memset(g_userTag[i].tag, 0, MAX_TAG_LENGTH);
+            sprintf(g_userTag[i].tag,"%s-%d","rlib",id);
+            ++g_activeUserTag;
+            break;
+        }
+    }
+    g_mutext.unlock();
+    return category;
+}
+
+void Logger_exit(int category)
+{
+    g_mutext.lock();
+    if (category >= 0 && category < MAX_USER_TAG) {
+        g_userTag[category].active = false;
+        --g_activeUserTag;
+    }
+    g_mutext.unlock();
+}
 
 void Logger_set_level(int setLevel)
 {
@@ -73,9 +117,10 @@ void Logger_set_file(char *filepath)
             return;
         }
         if (g_fd != stderr && strlen(g_fileName) > 0) {
-            printf("render_client log file:%s \n",g_fileName);
+            fprintf(stderr, "libvideorender log file:%s \n",g_fileName);
             return;
         }
+        fprintf(stderr, "libvideorender log file:%s \n",g_fileName);
         memset(g_fileName, 0 , MAX_FILENAME_LENGTH);
         strcpy(g_fileName, filepath);
         if (g_fd != stderr) {
@@ -106,7 +151,7 @@ char *logLevelToString(int level) {
     return (char *) " U ";
 }
 
-void logPrint(int level, const char *fmt, ... )
+void logPrint(int category ,int level, const char *fmt, ... )
 {
     if ( level <= g_activeLevel )
     {
@@ -116,10 +161,12 @@ void logPrint(int level, const char *fmt, ... )
             int len = 0;
 
             len = sprintf(buf, "%lld ",getCurrentTimeMillis());
-            int tlen = len > 0? len:0;
-            tlen = sprintf( buf+tlen, "%d ", getpid());
-            if (tlen >= 0) {
-                len += tlen;
+            if (g_activeUserTag && category >= 0 && category < MAX_USER_TAG && g_userTag[category].active) {
+                int tlen = len > 0? len:0;
+                tlen = sprintf( buf+tlen, "%s ", g_userTag[category].tag);
+                if (tlen >= 0) {
+                    len += tlen;
+                }
             }
             va_start( argptr, fmt );
             if (len > 0) {
@@ -132,7 +179,11 @@ void logPrint(int level, const char *fmt, ... )
         } else if (g_fd != stderr) { //set output log to file
             va_list argptr;
             fprintf( g_fd, "%lld ", getCurrentTimeMillis());
-            fprintf( g_fd, "%d ", getpid());
+            if (g_activeUserTag && category >= 0 && category < MAX_USER_TAG && g_userTag[category].active) {
+                fprintf( g_fd, "%s ", g_userTag[category].tag);
+            } else {
+                fprintf( g_fd, "%d:%lu ", getpid(),pthread_self());
+            }
             //print log level tag
             fprintf( g_fd, "%s ",logLevelToString(level));
             va_start( argptr, fmt );

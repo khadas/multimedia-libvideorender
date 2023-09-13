@@ -29,8 +29,9 @@ using namespace Tls;
 #define UNDER_FLOW_EXPIRED_TIME_MS 83
 
 
-VideoTunnelImpl::VideoTunnelImpl(VideoTunnelPlugin *plugin)
-    : mPlugin(plugin)
+VideoTunnelImpl::VideoTunnelImpl(VideoTunnelPlugin *plugin, int logcategory)
+    : mPlugin(plugin),
+    mLogCategory(logcategory)
 {
     mFd = -1;
     mInstanceId = 0;
@@ -42,17 +43,22 @@ VideoTunnelImpl::VideoTunnelImpl(VideoTunnelPlugin *plugin)
     mFrameWidth = 0;
     mFrameHeight = 0;
     mUnderFlowDetect = false;
+    mPoll = new Tls::Poll(true);
 }
 
 VideoTunnelImpl::~VideoTunnelImpl()
 {
+    if (mPoll) {
+        delete mPoll;
+        mPoll = NULL;
+    }
 }
 
 bool VideoTunnelImpl::init()
 {
-    mVideotunnelLib = videotunnelLoadLib();
+    mVideotunnelLib = videotunnelLoadLib(mLogCategory);
     if (!mVideotunnelLib) {
-        ERROR("videotunnelLoadLib load symbol fail");
+        ERROR(mLogCategory,"videotunnelLoadLib load symbol fail");
         return false;
     }
     return true;
@@ -61,7 +67,7 @@ bool VideoTunnelImpl::init()
 bool VideoTunnelImpl::release()
 {
     if (mVideotunnelLib) {
-        videotunnelUnloadLib(mVideotunnelLib);
+        videotunnelUnloadLib(mLogCategory, mVideotunnelLib);
         mVideotunnelLib = NULL;
     }
     return true;
@@ -70,7 +76,7 @@ bool VideoTunnelImpl::release()
 bool VideoTunnelImpl::connect()
 {
     int ret;
-    DEBUG("in");
+    DEBUG(mLogCategory,"in");
     mRequestStop = false;
     mSignalFirstFrameDiplayed = false;
     if (mVideotunnelLib && mVideotunnelLib->vtOpen) {
@@ -85,36 +91,39 @@ bool VideoTunnelImpl::connect()
         }
         mIsVideoTunnelConnected = true;
     } else {
-        ERROR("open videotunnel fail or alloc id fail");
+        ERROR(mLogCategory,"open videotunnel fail or alloc id fail");
         return false;
     }
-    INFO("vt fd:%d, instance id:%d",mFd,mInstanceId);
-    DEBUG("out");
+    INFO(mLogCategory,"vt fd:%d, instance id:%d",mFd,mInstanceId);
+    DEBUG(mLogCategory,"out");
     return true;
 }
 
 bool VideoTunnelImpl::disconnect()
 {
     mRequestStop = true;
-    DEBUG("in");
+    DEBUG(mLogCategory,"in");
     if (isRunning()) {
+        if (mPoll) {
+            mPoll->setFlushing(true);
+        }
         requestExitAndWait();
         mStarted = false;
     }
 
     if (mFd > 0) {
         if (mIsVideoTunnelConnected) {
-            INFO("instance id:%d",mInstanceId);
+            INFO(mLogCategory,"instance id:%d",mInstanceId);
             if (mVideotunnelLib && mVideotunnelLib->vtDisconnect) {
                 mVideotunnelLib->vtDisconnect(mFd, mInstanceId, VT_ROLE_PRODUCER);
             }
             mIsVideoTunnelConnected = false;
         }
         if (mInstanceId >= 0) {
-            INFO("free instance id:%d",mInstanceId);
+            INFO(mLogCategory,"free instance id:%d",mInstanceId);
             //meson_vt_free_id(mFd, mInstanceId);
         }
-        INFO("close vt fd:%d",mFd);
+        INFO(mLogCategory,"close vt fd:%d",mFd);
         if (mVideotunnelLib && mVideotunnelLib->vtClose) {
             mVideotunnelLib->vtClose(mFd);
         }
@@ -122,15 +131,15 @@ bool VideoTunnelImpl::disconnect()
     }
 
     //flush all buffer those do not displayed
-    DEBUG("release all posted to videotunnel buffers");
-    std::lock_guard<std::mutex> lck(mMutex);
+    DEBUG(mLogCategory,"release all posted to videotunnel buffers");
+    Tls::Mutex::Autolock _l(mMutex);
     for (auto item = mQueueRenderBufferMap.begin(); item != mQueueRenderBufferMap.end(); ) {
         RenderBuffer *renderbuffer = (RenderBuffer*) item->second;
         mQueueRenderBufferMap.erase(item++);
         mPlugin->handleFrameDropped(renderbuffer);
         mPlugin->handleBufferRelease(renderbuffer);
     }
-    DEBUG("out");
+    DEBUG(mLogCategory,"out");
     return true;
 }
 
@@ -138,7 +147,7 @@ bool VideoTunnelImpl::displayFrame(RenderBuffer *buf, int64_t displayTime)
 {
     int ret;
     if (mStarted == false) {
-        DEBUG("to run VideoTunnelImpl");
+        DEBUG(mLogCategory,"to run VideoTunnelImpl");
         run("VideoTunnelImpl");
         mStarted = true;
         mSignalFirstFrameDiplayed = true;
@@ -153,11 +162,11 @@ bool VideoTunnelImpl::displayFrame(RenderBuffer *buf, int64_t displayTime)
         }
     }
 
-    std::lock_guard<std::mutex> lck(mMutex);
+    Tls::Mutex::Autolock _l(mMutex);
     std::pair<int, RenderBuffer *> item(fd0, buf);
     mQueueRenderBufferMap.insert(item);
     ++mQueueFrameCnt;
-    TRACE("***fd:%d,w:%d,h:%d,displaytime:%lld,commitCnt:%d",buf->dma.fd[0],buf->dma.width,buf->dma.height,displayTime,mQueueFrameCnt);
+    TRACE(mLogCategory,"***fd:%d,w:%d,h:%d,displaytime:%lld,commitCnt:%d",buf->dma.fd[0],buf->dma.width,buf->dma.height,displayTime,mQueueFrameCnt);
     mPlugin->handleFrameDisplayed(buf);
     mLastDisplayTime = Tls::Times::getSystemTimeMs();
     return true;
@@ -165,8 +174,8 @@ bool VideoTunnelImpl::displayFrame(RenderBuffer *buf, int64_t displayTime)
 
 void VideoTunnelImpl::flush()
 {
-    DEBUG("flush");
-    std::lock_guard<std::mutex> lck(mMutex);
+    DEBUG(mLogCategory,"flush");
+    Tls::Mutex::Autolock _l(mMutex);
     if (mVideotunnelLib && mVideotunnelLib->vtCancelBuffer) {
         mVideotunnelLib->vtCancelBuffer(mFd, mInstanceId);
     }
@@ -177,14 +186,14 @@ void VideoTunnelImpl::flush()
         mPlugin->handleBufferRelease(renderbuffer);
     }
     mQueueFrameCnt = 0;
-    DEBUG("after flush,commitCnt:%d",mQueueFrameCnt);
+    DEBUG(mLogCategory,"after flush,commitCnt:%d",mQueueFrameCnt);
 }
 
 void VideoTunnelImpl::setFrameSize(int width, int height)
 {
     mFrameWidth = width;
     mFrameHeight = height;
-    DEBUG("set frame size, width:%d, height:%d",mFrameWidth,mFrameHeight);
+    DEBUG(mLogCategory, "set frame size, width:%d, height:%d",mFrameWidth,mFrameHeight);
 }
 
 void VideoTunnelImpl::setVideotunnelId(int id)
@@ -194,14 +203,11 @@ void VideoTunnelImpl::setVideotunnelId(int id)
 
 void VideoTunnelImpl::waitFence(int fence) {
     if (fence > 0) {
-        struct pollfd fds;
-
-        fds.fd = fence;
-        fds.events = POLLERR | POLLNVAL | POLLHUP |POLLIN | POLLPRI | POLLRDNORM;
-        fds.revents = 0;
+        mPoll->addFd(fence);
+        mPoll->setFdReadable(fence, true);
 
         for ( ; ; ) {
-            int rc = poll(&fds, 1, 3000);
+            int rc = mPoll->wait(3000); //3 sec
             if ((rc == -1) && ((errno == EINTR) || (errno == EAGAIN))) {
                 continue;
             } else if (rc <= 0) {
@@ -209,6 +215,7 @@ void VideoTunnelImpl::waitFence(int fence) {
             }
             break;
         }
+        mPoll->removeFd(fence);
         close(fence);
         fence = -1;
     }
@@ -237,7 +244,7 @@ bool VideoTunnelImpl::threadLoop()
     RenderBuffer *buffer = NULL;
 
     if (mRequestStop) {
-        DEBUG("request stop");
+        DEBUG(mLogCategory,"request stop");
         return false;
     }
     //if last frame expired,and not send frame to compositor for under flow expired time
@@ -255,13 +262,13 @@ bool VideoTunnelImpl::threadLoop()
 
     if (ret != 0) {
         if (mRequestStop) {
-            DEBUG("request stop");
+            DEBUG(mLogCategory,"request stop");
             return false;
         }
         return true;
     }
     if (mRequestStop) {
-        DEBUG("request stop");
+        DEBUG(mLogCategory,"request stop");
         return false;
     }
 
@@ -269,22 +276,22 @@ bool VideoTunnelImpl::threadLoop()
     waitFence(fenceId);
 
     {
-        std::lock_guard<std::mutex> lck(mMutex);
+        Tls::Mutex::Autolock _l(mMutex);
         auto item = mQueueRenderBufferMap.find(bufferId);
         if (item == mQueueRenderBufferMap.end()) {
-            ERROR("Not found in mQueueRenderBufferMap bufferId:%d",bufferId);
+            ERROR(mLogCategory,"Not found in mQueueRenderBufferMap bufferId:%d",bufferId);
             return true;
         }
         // try locking when removing item from mQueueRenderBufferMap
         buffer = (RenderBuffer*) item->second;
         mQueueRenderBufferMap.erase(bufferId);
         --mQueueFrameCnt;
-        TRACE("***dq buffer fd:%d,commitCnt:%d",bufferId,mQueueFrameCnt);
+        TRACE(mLogCategory,"***dq buffer fd:%d,commitCnt:%d",bufferId,mQueueFrameCnt);
     }
     //send first frame displayed msg
     if (mSignalFirstFrameDiplayed) {
         mSignalFirstFrameDiplayed = false;
-        INFO("send first frame displayed msg");
+        INFO(mLogCategory,"send first frame displayed msg");
         mPlugin->handleMsgNotify(MSG_FIRST_FRAME,(void*)&buffer->pts);
     }
     mPlugin->handleBufferRelease(buffer);

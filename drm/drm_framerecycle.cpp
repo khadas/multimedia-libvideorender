@@ -23,9 +23,10 @@ using namespace Tls;
 
 #define TAG "rlib:drm_framerecycle"
 
-DrmFrameRecycle::DrmFrameRecycle(DrmDisplay *drmDisplay)
+DrmFrameRecycle::DrmFrameRecycle(DrmDisplay *drmDisplay, int logCategory)
 {
     mDrmDisplay = drmDisplay;
+    mLogCategory = logCategory;
     mStop = false;
     mWaitVideoFence = false;
     mQueue = new Tls::Queue();
@@ -35,7 +36,7 @@ DrmFrameRecycle::~DrmFrameRecycle()
 {
     if (isRunning()) {
         mStop = true;
-        DEBUG("stop frame recycle thread");
+        DEBUG(mLogCategory,"stop frame recycle thread");
         requestExitAndWait();
     }
 
@@ -48,7 +49,7 @@ DrmFrameRecycle::~DrmFrameRecycle()
 
 bool DrmFrameRecycle::start()
 {
-    DEBUG("start frame recycle thread");
+    DEBUG(mLogCategory,"start frame recycle thread");
     mStop = false;
     run("frame recycle thread");
     return true;
@@ -58,24 +59,24 @@ bool DrmFrameRecycle::stop()
 {
     if (isRunning()) {
         mStop = true;
-        DEBUG("stop frame recycle thread");
+        DEBUG(mLogCategory,"stop frame recycle thread");
         requestExitAndWait();
     }
     mWaitVideoFence = false;
-    std::lock_guard<std::mutex> lck(mMutex);
+    Tls::Mutex::Autolock _l(mMutex);
     mQueue->flushAndCallback(this, DrmFrameRecycle::queueFlushCallback);
     return true;
 }
 
 bool DrmFrameRecycle::recycleFrame(FrameEntity * frameEntity)
 {
-    std::lock_guard<std::mutex> lck(mMutex);
+    Tls::Mutex::Autolock _l(mMutex);
     if (mStop) {
         mDrmDisplay->handleReleaseFrameEntity(frameEntity);
         return true;
     }
     mQueue->push(frameEntity);
-    TRACE("queue cnt:%d",mQueue->getCnt());
+    TRACE(mLogCategory,"queue cnt:%d",mQueue->getCnt());
     /* when two frame are posted, fence can be retrieved.
      * So waiting video fence starts
      */
@@ -115,13 +116,13 @@ bool DrmFrameRecycle::threadLoop()
         return true;
     }
 
-    TRACE("wait video fence for frame:%lld(pts:%lld)",frameEntity->displayTime,frameEntity->renderBuf->pts);
+    TRACE(mLogCategory,"wait video fence for frame:%lld(pts:%lld)",frameEntity->displayTime,frameEntity->renderBuf->pts);
     if (drmMesonLib) {
         rc = drmMesonLib->libDrmWaitVideoFence(frameEntity->drmBuf->fd[0]);
     }
 
     if (rc <= 0) {
-        WARNING("wait fence error %d", rc);
+        WARNING(mLogCategory, "wait fence error %d", rc);
     }
 
     mDrmDisplay->handleReleaseFrameEntity(frameEntity);

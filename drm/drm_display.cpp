@@ -24,6 +24,7 @@
 #include "Logger.h"
 #include "drm_framepost.h"
 #include "drm_framerecycle.h"
+#include "ErrorCode.h"
 
 using namespace Tls;
 
@@ -32,8 +33,9 @@ using namespace Tls;
 #define BLACK_FRAME_WIDTH 64
 #define BLACK_FRAME_HEIGHT 64
 
-DrmDisplay::DrmDisplay(DrmPlugin *plugin)
-    : mPlugin(plugin)
+DrmDisplay::DrmDisplay(DrmPlugin *plugin, int logcategory)
+    : mPlugin(plugin),
+    mLogCategory(logcategory)
 {
     mDrmHandle = NULL;
     mBlackFrame = 0;
@@ -52,7 +54,7 @@ DrmDisplay::DrmDisplay(DrmPlugin *plugin)
     mHideVideo = false;
     mIsDropFrames = false;
     mKeepLastFrame = false;
-    mDrmMesonLib = drmMesonLoadLib();
+    mDrmMesonLib = drmMesonLoadLib(logcategory);
 }
 
 DrmDisplay::~DrmDisplay()
@@ -65,7 +67,7 @@ DrmDisplay::~DrmDisplay()
     }
     //free dlopen resources
     if (mDrmMesonLib) {
-        drmMesonUnloadLib(mDrmMesonLib);
+        drmMesonUnloadLib(mLogCategory, mDrmMesonLib);
         mDrmMesonLib = NULL;
     }
 }
@@ -74,13 +76,13 @@ bool DrmDisplay::start(bool pip)
 {
     mIsPip = pip;
 
-    DEBUG("start pip:%d",pip);
+    DEBUG(mLogCategory, "start pip:%d",pip);
     if (mDrmMesonLib) {
         mDrmHandle = mDrmMesonLib->libDrmDisplayInit();
     }
 
     if (!mDrmHandle) {
-        ERROR("drm display init failed");
+        ERROR(mLogCategory, "drm display init failed");
         return false;
     }
 #ifdef SUPPORT_DRM_FREEZEN
@@ -90,11 +92,11 @@ bool DrmDisplay::start(bool pip)
     } else {
         mDrmHandle->freeze = 0;
     }
-    INFO("set keep last frame %d", mDrmHandle->freeze);
+    INFO(mLogCategory, "set keep last frame %d", mDrmHandle->freeze);
 #endif
 
     if (!mDrmFramePost) {
-        mDrmFramePost = new DrmFramePost(this);
+        mDrmFramePost = new DrmFramePost(this, mLogCategory);
         mDrmFramePost->start();
         /*if window size set, we set to frame post,this needed
          when yts resize case,window size must effect when post
@@ -106,7 +108,7 @@ bool DrmDisplay::start(bool pip)
     }
 
     if (!mDrmFrameRecycle) {
-        mDrmFrameRecycle = new DrmFrameRecycle(this);
+        mDrmFrameRecycle = new DrmFrameRecycle(this,mLogCategory);
         mDrmFrameRecycle->start();
     }
     return true;
@@ -115,13 +117,13 @@ bool DrmDisplay::start(bool pip)
 bool DrmDisplay::stop()
 {
     if (mDrmFramePost) {
-        DEBUG("stop frame post thread");
+        DEBUG(mLogCategory, "stop frame post thread");
         mDrmFramePost->stop();
         delete mDrmFramePost;
         mDrmFramePost = NULL;
     }
     if (mDrmFrameRecycle) {
-        DEBUG("stop frame recycle thread");
+        DEBUG(mLogCategory, "stop frame recycle thread");
         mDrmFrameRecycle->stop();
         delete mDrmFrameRecycle;
         mDrmFrameRecycle = NULL;
@@ -163,7 +165,7 @@ bool DrmDisplay::displayFrame(RenderBuffer *buf, int64_t displayTime)
                 mIsDropFrames = true;
             }
         } else {
-            WARNING("no frame post service");
+            WARNING(mLogCategory,"no frame post service");
             handleDropedFrameEntity(frameEntity);
             handleReleaseFrameEntity(frameEntity);
         }
@@ -179,8 +181,8 @@ bool DrmDisplay::displayFrame(RenderBuffer *buf, int64_t displayTime)
 
 void DrmDisplay::flush()
 {
-    DEBUG("flush");
-    std::lock_guard<std::mutex> lck(mMutex);
+    DEBUG(mLogCategory,"flush");
+    Tls::Mutex::Autolock _l(mMutex);
     if (mDrmFramePost) {
         mDrmFramePost->flush();
     }
@@ -199,7 +201,7 @@ void DrmDisplay::resume()
 void DrmDisplay::setVideoFormat(RenderVideoFormat videoFormat)
 {
     mVideoFormat = videoFormat;
-    DEBUG("video format:%d",mVideoFormat);
+    DEBUG(mLogCategory,"video format:%d",mVideoFormat);
 }
 
 void DrmDisplay::setWindowSize(int x, int y, int w, int h)
@@ -208,7 +210,7 @@ void DrmDisplay::setWindowSize(int x, int y, int w, int h)
     mWinRect.y = y;
     mWinRect.w = w;
     mWinRect.h = h;
-    DEBUG("window size:(%dx%dx%dx%d)",x, y,w,h);
+    DEBUG(mLogCategory,"window size:(%dx%dx%dx%d)",x, y,w,h);
     if (mDrmFramePost) {
         mDrmFramePost->setWindowSize(x, y, w, h);
     }
@@ -218,13 +220,17 @@ void DrmDisplay::setFrameSize(int width, int height)
 {
     mFrameWidth = width;
     mFrameHeight = height;
-    DEBUG("frame size:%dx%d",width, height);
+    DEBUG(mLogCategory,"frame size:%dx%d",width, height);
 }
 
 void DrmDisplay::showBlackFrame()
 {
     int rc;
     struct drm_buf_metadata info;
+
+    if (mBlackFrame) {
+        return;
+    }
 
     memset(&info, 0 , sizeof(struct drm_buf_metadata));
 
@@ -244,14 +250,14 @@ void DrmDisplay::showBlackFrame()
     }
 
     if (!mBlackFrame) {
-        ERROR("Unable to alloc drm buf");
+        ERROR(mLogCategory,"Unable to alloc drm buf");
         goto tag_error;
     }
 
     mBlackFrameAddr = mmap (NULL, info.width * info.height * 2, PROT_WRITE,
         MAP_SHARED, mBlackFrame->fd[0], mBlackFrame->offsets[0]);
     if (mBlackFrameAddr == MAP_FAILED) {
-        ERROR("mmap fail %d", errno);
+        ERROR(mLogCategory,"mmap fail %d", errno);
         mBlackFrameAddr = NULL;
     }
 
@@ -262,12 +268,15 @@ void DrmDisplay::showBlackFrame()
     mBlackFrame->crtc_w = -1;
     mBlackFrame->crtc_h = -1;
 
+    //disable plane
+    mBlackFrame->disable_plane = 1;
+
     //post black frame buf to drm
     if (mDrmHandle && mDrmMesonLib) {
         rc = mDrmMesonLib->libDrmPostBuf(mDrmHandle, mBlackFrame);
     }
     if (rc) {
-        ERROR("post black frame to drm failed");
+        ERROR(mLogCategory, "post black frame to drm failed");
         goto tag_error;
     }
 
@@ -295,7 +304,7 @@ void DrmDisplay::setImmediatelyOutout(bool on)
 }
 
 void DrmDisplay::setHideVideo(bool hide) {
-    INFO("hide video:%d",hide);
+    INFO(mLogCategory,"hide video:%d",hide);
     mHideVideo = hide;
     mIsDropFrames = false;
 }
@@ -309,7 +318,11 @@ void DrmDisplay::setKeepLastFrame(bool keep)
     if (mDrmHandle) {
         mDrmHandle->freeze = kp;
     }
-    INFO("set keep last frame %d(%d)", keep,mDrmHandle->freeze);
+    INFO(mLogCategory, "set keep last frame %d(%d)", keep,mDrmHandle->freeze);
+    if (!kp) {
+        INFO(mLogCategory, "set keep last frame %d, show black frame to drm", kp);
+        showBlackFrame();
+    }
 #endif
 }
 
@@ -321,7 +334,7 @@ FrameEntity *DrmDisplay::createFrameEntity(RenderBuffer *buf, int64_t displayTim
 
     frame = (FrameEntity*)calloc(1, sizeof(FrameEntity));
     if (!frame) {
-        ERROR("oom calloc FrameEntity mem failed");
+        ERROR(mLogCategory,"oom calloc FrameEntity mem failed");
         goto tag_error;
     }
 
@@ -344,7 +357,7 @@ FrameEntity *DrmDisplay::createFrameEntity(RenderBuffer *buf, int64_t displayTim
 
         default: {
             info.fourcc = DRM_FORMAT_YUYV;
-            WARNING("unknown video format, set to default YUYV format");
+            WARNING(mLogCategory,"unknown video format, set to default YUYV format");
         }
     }
 
@@ -358,7 +371,7 @@ FrameEntity *DrmDisplay::createFrameEntity(RenderBuffer *buf, int64_t displayTim
     if not dup buf fd, fd will be double free*/
     for (int i = 0; i < buf->dma.planeCnt; i++) {
         info.fd[i] = dup(buf->dma.fd[i]);
-        TRACE("dup fd[%d]:%d->%d",i,buf->dma.fd[i],info.fd[i]);
+        TRACE(mLogCategory,"dup fd[%d]:%d->%d",i,buf->dma.fd[i],info.fd[i]);
     }
 
     if (mDrmHandle && mDrmMesonLib) {
@@ -366,7 +379,7 @@ FrameEntity *DrmDisplay::createFrameEntity(RenderBuffer *buf, int64_t displayTim
     }
 
     if (!drmBuf) {
-        ERROR("unable drm_import_buf");
+        ERROR(mLogCategory, "unable drm_import_buf");
         goto tag_error;
     }
 
@@ -393,7 +406,7 @@ FrameEntity *DrmDisplay::createFrameEntity(RenderBuffer *buf, int64_t displayTim
 #endif
 
     frame->drmBuf = drmBuf;
-    TRACE("crtc(%d,%d,%d,%d),src(%d,%d,%d,%d)",drmBuf->crtc_x,drmBuf->crtc_y,drmBuf->crtc_w,drmBuf->crtc_h,
+    TRACE(mLogCategory,"crtc(%d,%d,%d,%d),src(%d,%d,%d,%d)",drmBuf->crtc_x,drmBuf->crtc_y,drmBuf->crtc_w,drmBuf->crtc_h,
         drmBuf->src_x,drmBuf->src_y,drmBuf->src_w,drmBuf->src_h);
 
     return frame;
@@ -423,9 +436,9 @@ void DrmDisplay::destroyFrameEntity(FrameEntity * frameEntity)
         }
 
         if (rc) {
-            WARNING("drm_free_buf free %p failed",frameEntity->drmBuf);
+            WARNING(mLogCategory, "drm_free_buf free %p failed",frameEntity->drmBuf);
         }
-        TRACE("drm_free_buf displaytime:%lld(pts:%lld ms)",frameEntity->displayTime,frameEntity->renderBuf->pts/1000000);
+        TRACE(mLogCategory,"drm_free_buf displaytime:%lld(pts:%lld ms)",frameEntity->displayTime,frameEntity->renderBuf->pts/1000000);
     }
     free(frameEntity);
 }

@@ -16,14 +16,16 @@
 #include "drm_plugin.h"
 #include "Logger.h"
 #include "drm_display.h"
+#include "ErrorCode.h"
 
 #define TAG "rlib:drm_plugin"
 
-DrmPlugin::DrmPlugin()
+DrmPlugin::DrmPlugin(int logCategory)
+    : mLogCategory(logCategory)
 {
     mVideoFormat = VIDEO_FORMAT_UNKNOWN;
     mIsPip = false;
-    mDrmDisplay = new DrmDisplay(this);
+    mDrmDisplay = new DrmDisplay(this,logCategory);
 }
 
 DrmPlugin::~DrmPlugin()
@@ -36,7 +38,7 @@ DrmPlugin::~DrmPlugin()
 
 void DrmPlugin::init()
 {
-    INFO("\n--------------------------------\n"
+    INFO(mLogCategory,"\n--------------------------------\n"
             "plugin      : drmmeson\n"
             "ARCH        : %s\n"
             "branch name : %s\n"
@@ -76,65 +78,67 @@ int DrmPlugin::openDisplay()
 {
     int ret;
 
-    DEBUG("openDisplay");
+    DEBUG(mLogCategory,"openDisplay");
 
+    DEBUG(mLogCategory,"openDisplay end");
     return ret;
 }
 
 int DrmPlugin::openWindow()
 {
-    int ret = 0;
+    int ret = NO_ERROR;
 
-    DEBUG("openWindow");
+    DEBUG(mLogCategory,"openWindow");
 
     bool rc = mDrmDisplay->start(mIsPip);
     if (!rc) {
-        ERROR("drm window open failed");
-        return -1;
+        ret = ERROR_OPEN_FAIL;
+        ERROR(mLogCategory,"drm window open failed");
+        return ret;
     }
 
-    DEBUG("openWindow,end");
+    DEBUG(mLogCategory,"openWindow,end");
     return ret;
 }
 
 int DrmPlugin::prepareFrame(RenderBuffer *buffer)
 {
-
+    return NO_ERROR;
 }
 
 int DrmPlugin::displayFrame(RenderBuffer *buffer, int64_t displayTime)
 {
     mDrmDisplay->displayFrame(buffer, displayTime);
-    return 0;
+    return NO_ERROR;
 }
 
 int DrmPlugin::flush()
 {
     mDrmDisplay->flush();
-    return 0;
+    return NO_ERROR;
 }
 
 int DrmPlugin::pause()
 {
     mDrmDisplay->pause();
-    return 0;
+    return NO_ERROR;
 }
 int DrmPlugin::resume()
 {
     mDrmDisplay->resume();
-    return 0;
+    return NO_ERROR;
 }
 
 int DrmPlugin::closeDisplay()
 {
-    return 0;
+    return NO_ERROR;
 }
 
 int DrmPlugin::closeWindow()
 {
     int ret;
     mDrmDisplay->stop();
-    return 0;
+    return NO_ERROR;
 }
 
 
@@ -143,7 +147,7 @@ int DrmPlugin::getValue(PluginKey key, void *value)
     switch (key) {
         case PLUGIN_KEY_VIDEO_FORMAT: {
             *(int *)value = mVideoFormat;
-            TRACE("get video format:%d",*(int *)value);
+            TRACE(mLogCategory,"get video format:%d",*(int *)value);
         } break;
         case PLUGIN_KEY_VIDEO_PIP: {
             *(int *)value = (mIsPip == true) ? 1 : 0;
@@ -154,11 +158,11 @@ int DrmPlugin::getValue(PluginKey key, void *value)
                 isHide = mDrmDisplay->isHideVideo();
             }
             *(int *)value = isHide == true? 1: 0;
-            TRACE("get hide video:%d",*(int *)value);
+            TRACE(mLogCategory,"get hide video:%d",*(int *)value);
         } break;
     }
 
-    return 0;
+    return NO_ERROR;
 }
 
 int DrmPlugin::setValue(PluginKey key, void *value)
@@ -179,7 +183,7 @@ int DrmPlugin::setValue(PluginKey key, void *value)
         case PLUGIN_KEY_VIDEO_FORMAT: {
             int format = *(int *)(value);
             mVideoFormat = (RenderVideoFormat) format;
-            DEBUG("Set video format :%d",mVideoFormat);
+            DEBUG(mLogCategory,"Set video format :%d",mVideoFormat);
             if (mDrmDisplay) {
                 mDrmDisplay->setVideoFormat(mVideoFormat);
             }
@@ -190,7 +194,7 @@ int DrmPlugin::setValue(PluginKey key, void *value)
         };
         case PLUGIN_KEY_IMMEDIATELY_OUTPUT: {
             bool immediately = (*(int *)(value)) > 0? true: false;
-            DEBUG( "Set immediately output:%d",immediately);
+            DEBUG(mLogCategory, "Set immediately output:%d",immediately);
             if (mDrmDisplay) {
                 mDrmDisplay->setImmediatelyOutout(immediately);
             }
@@ -204,13 +208,13 @@ int DrmPlugin::setValue(PluginKey key, void *value)
         case PLUGIN_KEY_KEEP_LAST_FRAME: {
             int keep = *(int *) (value);
             bool keepLastFrame = keep > 0? true:false;
-            DEBUG("Set keep last frame :%d",keepLastFrame);
+            DEBUG(mLogCategory, "Set keep last frame :%d",keepLastFrame);
             if (mDrmDisplay) {
                 mDrmDisplay->setKeepLastFrame(keepLastFrame);
             }
         } break;
     }
-    return 0;
+    return NO_ERROR;
 }
 
 void DrmPlugin::handleBufferRelease(RenderBuffer *buffer)
@@ -243,18 +247,23 @@ void DrmPlugin::handleMsgNotify(int type, void *detail)
 
 void *makePluginInstance(int id)
 {
+    int category =Logger_init(id);
     char *env = getenv("VIDEO_RENDER_LOG_LEVEL");
     if (env) {
         int level = atoi(env);
         Logger_set_level(level);
-        INFO("VIDEO_RENDER_LOG_LEVEL=%d",level);
+        INFO(category,"VIDEO_RENDER_LOG_LEVEL=%d",level);
     }
-    DrmPlugin *drmPlugin = new DrmPlugin();
+    DrmPlugin *drmPlugin = new DrmPlugin(category);
     return static_cast<void *>(drmPlugin);
 }
 
 void destroyPluginInstance(void * plugin)
 {
+    int category;
+
     DrmPlugin *pluginInstance = static_cast<DrmPlugin *>(plugin);
+    category = pluginInstance->getLogCategory();
     delete pluginInstance;
+    Logger_exit(category);
 }
