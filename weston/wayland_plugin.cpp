@@ -325,11 +325,11 @@ tag_next:
 void *makePluginInstance(int id)
 {
     int category =Logger_init(id);
-    char *env = getenv("VIDEO_RENDER_LOG_LEVEL");
+    char *env = getenv("VIDEO_RENDER_PLUGIN_LOG_LEVEL");
     if (env) {
         int level = atoi(env);
         Logger_set_level(level);
-        INFO(category,"VIDEO_RENDER_LOG_LEVEL=%d",level);
+        INFO(category,"VIDEO_RENDER_PLUGIN_LOG_LEVEL=%d",level);
     }
     WaylandPlugin *pluginInstance = new WaylandPlugin(category);
     return static_cast<void *>(pluginInstance);
