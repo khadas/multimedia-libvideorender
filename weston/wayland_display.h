@@ -215,6 +215,7 @@ class WaylandDisplay : public Tls::Thread{
         int height;
         int refreshRate;
         bool isPrimary;
+        uint32_t name;
     } DisplayOutput;
     struct Rectangle {
         int x;
@@ -254,7 +255,6 @@ class WaylandDisplay : public Tls::Thread{
 
     /*primary output will signal first,so 0 index is primary wl_output, 1 index is extend wl_output*/
     DisplayOutput mOutput[DEFAULT_DISPLAY_OUTPUT_NUM]; //info about wl_output
-    int mNextOutput; //the count of wl_output,
     int mActiveOutput; //default is primary output
 
     int mLogCategory;

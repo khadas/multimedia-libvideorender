@@ -441,41 +441,46 @@ static const struct xdg_surface_listener xdg_surface_listener = {
 
 void
 WaylandDisplay::registryHandleGlobal (void *data, struct wl_registry *registry,
-    uint32_t id, const char *interface, uint32_t version)
+    uint32_t name, const char *interface, uint32_t version)
 {
     WaylandDisplay *self = static_cast<WaylandDisplay *>(data);
-    TRACE(self->mLogCategory,"registryHandleGlobal,interface:%s,version:%d",interface,version);
+    TRACE(self->mLogCategory,"registryHandleGlobal,name:%u,interface:%s,version:%d",name,interface,version);
 
     if (strcmp (interface, "wl_compositor") == 0) {
-        self->mCompositor = (struct wl_compositor *)wl_registry_bind (registry, id, &wl_compositor_interface, 1/*MIN (version, 3)*/);
+        self->mCompositor = (struct wl_compositor *)wl_registry_bind (registry, name, &wl_compositor_interface, 1/*MIN (version, 3)*/);
     } else if (strcmp (interface, "wl_subcompositor") == 0) {
-        self->mSubCompositor = (struct wl_subcompositor *)wl_registry_bind (registry, id, &wl_subcompositor_interface, 1);
+        self->mSubCompositor = (struct wl_subcompositor *)wl_registry_bind (registry, name, &wl_subcompositor_interface, 1);
     } else if (strcmp (interface, "xdg_wm_base") == 0) {
-        self->mXdgWmBase = (struct xdg_wm_base *)wl_registry_bind (registry, id, &xdg_wm_base_interface, 1);
+        self->mXdgWmBase = (struct xdg_wm_base *)wl_registry_bind (registry, name, &xdg_wm_base_interface, 1);
         xdg_wm_base_add_listener (self->mXdgWmBase, &xdg_wm_base_listener, (void *)self);
     } else if (strcmp (interface, "wl_shm") == 0) {
-        self->mShm = (struct wl_shm *)wl_registry_bind (registry, id, &wl_shm_interface, 1);
+        self->mShm = (struct wl_shm *)wl_registry_bind (registry, name, &wl_shm_interface, 1);
         wl_shm_add_listener (self->mShm, &shm_listener, self);
     } else if (strcmp (interface, "zwp_fullscreen_shell_v1") == 0) {
-        //self->mFullscreenShell = (struct zwp_fullscreen_shell_v1 *)wl_registry_bind (registry, id,
+        //self->mFullscreenShell = (struct zwp_fullscreen_shell_v1 *)wl_registry_bind (registry, name,
         //    &zwp_fullscreen_shell_v1_interface, 1);
     } else if (strcmp (interface, "wp_viewporter") == 0) {
-        self->mViewporter = (struct wp_viewporter *)wl_registry_bind (registry, id, &wp_viewporter_interface, 1);
+        self->mViewporter = (struct wp_viewporter *)wl_registry_bind (registry, name, &wp_viewporter_interface, 1);
     } else if (strcmp (interface, "zwp_linux_dmabuf_v1") == 0) {
         if (version < 3)
             return;
-        self->mDmabuf = (struct zwp_linux_dmabuf_v1 *)wl_registry_bind (registry, id, &zwp_linux_dmabuf_v1_interface, 3);
+        self->mDmabuf = (struct zwp_linux_dmabuf_v1 *)wl_registry_bind (registry, name, &zwp_linux_dmabuf_v1_interface, 3);
         zwp_linux_dmabuf_v1_add_listener (self->mDmabuf, &dmabuf_listener, (void *)self);
     }  else if (strcmp (interface, "wl_output") == 0) {
-        int index = self->mNextOutput;
-        if (index == 0) { //primary wl_output
-            self->mOutput[index].isPrimary = true;
+        for (int i = 0; i < DEFAULT_DISPLAY_OUTPUT_NUM; i++) {
+            if (self->mOutput[i].wlOutput ==  NULL) {
+                self->mOutput[i].name = name;
+                self->mOutput[i].wlOutput = (struct wl_output*)wl_registry_bind(registry, name, &wl_output_interface, version);
+                wl_output_add_listener(self->mOutput[i].wlOutput, &outputListener, (void *)self);
+                if (i == 0) { //primary wl_output
+                    self->mOutput[i].isPrimary = true;
+                }
+                return;
+            }
         }
-        self->mNextOutput += 1;
-        self->mOutput[index].wlOutput = (struct wl_output*)wl_registry_bind(registry, id, &wl_output_interface, version);
-        wl_output_add_listener(self->mOutput[index].wlOutput, &outputListener, (void *)self);
+        WARNING(self->mLogCategory,"Not enough free output");
     } else if (strcmp(interface, "wl_seat") == 0) {
-        //self->mSeat = (struct wl_seat *)wl_registry_bind(registry, id, &wl_seat_interface, 1);
+        //self->mSeat = (struct wl_seat *)wl_registry_bind(registry, name, &wl_seat_interface, 1);
         //wl_seat_add_listener(self->mSeat, &seat_listener, (void *)self);
     }
 }
@@ -484,8 +489,15 @@ void
 WaylandDisplay::registryHandleGlobalRemove (void *data, struct wl_registry *registry, uint32_t name)
 {
     WaylandDisplay *self = static_cast<WaylandDisplay *>(data);
-    /* temporarily do nothing */
-    DEBUG(self->mLogCategory,"wayland display remove registry handle global");
+    /* check wl_output changed */
+    DEBUG(self->mLogCategory,"wayland display remove registry handle global,name:%u",name);
+    for (int i = 0; i < DEFAULT_DISPLAY_OUTPUT_NUM; i++) {
+        if (self->mOutput[i].name == name) {
+            self->mOutput[i].name = 0;
+            self->mOutput[i].wlOutput = NULL;
+            DEBUG(self->mLogCategory,"remove wl_output name:%u",name);
+        }
+    }
 }
 
 static const struct wl_registry_listener registry_listener = {
@@ -512,7 +524,6 @@ WaylandDisplay::WaylandDisplay(WaylandPlugin *plugin, int logCategory)
     mPointer = NULL;
     mTouch = NULL;
     mKeyboard = NULL;
-    mNextOutput = 0;
     mActiveOutput = 0; //default is primary output
     mPoll = new Tls::Poll(true);
     //window
@@ -569,6 +580,7 @@ WaylandDisplay::WaylandDisplay(WaylandPlugin *plugin, int logCategory)
         mOutput[i].height = 0;
         mOutput[i].refreshRate = 0;
         mOutput[i].isPrimary = false;
+        mOutput[i].name = 0;
     }
 }
 
@@ -789,6 +801,10 @@ void WaylandDisplay::setDisplayOutput(int output)
     TRACE(mLogCategory,"select display output: %d",output);
     if (output < 0 || output >= DEFAULT_DISPLAY_OUTPUT_NUM) {
         ERROR(mLogCategory, "display output index error,please set 0:primary or 1:extend,now:%d",output);
+        return;
+    }
+    if (!mOutput[output].wlOutput) {
+        ERROR(mLogCategory, "Error output index,wl_output is null,now:%d",output);
         return;
     }
     if (mActiveOutput != output) {
