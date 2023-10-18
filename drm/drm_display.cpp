@@ -228,10 +228,6 @@ void DrmDisplay::showBlackFrame()
     int rc;
     struct drm_buf_metadata info;
 
-    if (mBlackFrame) {
-        return;
-    }
-
     memset(&info, 0 , sizeof(struct drm_buf_metadata));
 
     /* use single planar for black frame */
@@ -245,7 +241,7 @@ void DrmDisplay::showBlackFrame()
     else
         info.flags |= MESON_USE_VD2;
 
-    if (mDrmHandle && mDrmMesonLib) {
+    if (mDrmHandle && mDrmMesonLib && !mBlackFrame) {
         mBlackFrame = mDrmMesonLib->libDrmAllocBuf(mDrmHandle, &info);
     }
 
@@ -254,11 +250,14 @@ void DrmDisplay::showBlackFrame()
         goto tag_error;
     }
 
-    mBlackFrameAddr = mmap (NULL, info.width * info.height * 2, PROT_WRITE,
-        MAP_SHARED, mBlackFrame->fd[0], mBlackFrame->offsets[0]);
-    if (mBlackFrameAddr == MAP_FAILED) {
-        ERROR(mLogCategory,"mmap fail %d", errno);
-        mBlackFrameAddr = NULL;
+    if (!mBlackFrameAddr) {
+        mBlackFrameAddr = mmap (NULL, info.width * info.height * 2, PROT_WRITE,
+            MAP_SHARED, mBlackFrame->fd[0], mBlackFrame->offsets[0]);
+        if (mBlackFrameAddr == MAP_FAILED) {
+            ERROR(mLogCategory,"mmap fail %d", errno);
+            mBlackFrameAddr = NULL;
+            goto tag_error;
+        }
     }
 
     /* full screen black frame */
@@ -268,7 +267,7 @@ void DrmDisplay::showBlackFrame()
     mBlackFrame->crtc_w = -1;
     mBlackFrame->crtc_h = -1;
 
-    //disable plane
+    //disable plane,only this flag can take effect for black screen
     mBlackFrame->disable_plane = 1;
 
     //post black frame buf to drm
@@ -290,7 +289,6 @@ tag_error:
         if (mDrmMesonLib) {
             mDrmMesonLib->libDrmFreeBuf(mBlackFrame);
         }
-
         mBlackFrame = NULL;
     }
     return;
@@ -307,6 +305,11 @@ void DrmDisplay::setHideVideo(bool hide) {
     INFO(mLogCategory,"hide video:%d",hide);
     mHideVideo = hide;
     mIsDropFrames = false;
+    //if set hide video after paused,we should send a black frame to enable black screen
+    if (hide && mPaused) {
+        INFO(mLogCategory, "show black frame to drm");
+        showBlackFrame();
+    }
 }
 
 void DrmDisplay::setKeepLastFrame(bool keep)
@@ -331,6 +334,7 @@ FrameEntity *DrmDisplay::createFrameEntity(RenderBuffer *buf, int64_t displayTim
     struct drm_buf_import info;
     FrameEntity* frame = NULL;
     struct drm_buf * drmBuf = NULL;
+    int displayWidth = 0, displayHeight = 0;
 
     frame = (FrameEntity*)calloc(1, sizeof(FrameEntity));
     if (!frame) {
@@ -393,10 +397,23 @@ FrameEntity *DrmDisplay::createFrameEntity(RenderBuffer *buf, int64_t displayTim
      *if window size set,the crtc size will be reset
      *before post drm buffer
      */
+    //get current display mode
+    if (mDrmHandle && mDrmMesonLib) {
+        DisplayMode displayMode;
+        mDrmMesonLib->libDrmGetModeInfo(mDrmHandle->drm_fd, MESON_CONNECTOR_RESERVED, &displayMode);
+        displayWidth = displayMode.w;
+        displayHeight = displayMode.h;
+        ERROR(mLogCategory, "displayWidth:%d,displayHeight:%d",displayWidth,displayHeight);
+    }
     drmBuf->crtc_x = 0;
     drmBuf->crtc_y = 0;
-    drmBuf->crtc_w = mDrmHandle->width;
-    drmBuf->crtc_h = mDrmHandle->height;
+    if (displayWidth > 0 && displayHeight > 0) {
+        drmBuf->crtc_w = displayWidth;
+        drmBuf->crtc_h = displayHeight;
+    } else {
+        drmBuf->crtc_w = mDrmHandle->width;
+        drmBuf->crtc_h = mDrmHandle->height;
+    }
 #ifdef SUPPORT_DRM_FREEZEN
     if (mHideVideo) {
         drmBuf->disable_plane = 1;

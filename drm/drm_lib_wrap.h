@@ -18,6 +18,7 @@
 
 extern "C" {
 #include "meson_drm_util.h"
+#include "meson_drm_settings.h"
 }
 
 typedef struct drm_display *(*lib_drm_display_init)(void);
@@ -39,6 +40,7 @@ typedef int (*lib_drmModeAsyncAtomicCommit)(int fd, drmModeAtomicReqPtr req,
                                    uint32_t flags, void *user_data);
 
 typedef int (*lib_drm_waitvideoFence)( int dmabuffd);
+typedef int (*lib_drm_getModeInfo)(int drmFd, MESON_CONNECTOR_TYPE connType, DisplayMode* modeInfo);
 
 typedef struct {
     void *libHandle; //lib handle of dlopen
@@ -55,6 +57,7 @@ typedef struct {
     lib_drm_post_buf libDrmPostBuf;
     lib_drmModeAsyncAtomicCommit libDrmModeAsyncAtomicCommit;
     lib_drm_waitvideoFence libDrmWaitVideoFence;
+    lib_drm_getModeInfo libDrmGetModeInfo;
 } DrmMesonLib;
 
 

@@ -118,6 +118,12 @@ DrmMesonLib * drmMesonLoadLib(int logCategory)
         goto err_labal;
     }
 
+    handle->libDrmGetModeInfo = (lib_drm_getModeInfo)dlsym(handle->libHandle, "meson_drm_getModeInfo");
+    if (handle->libDrmGetModeInfo == NULL) {
+        ERROR(logCategory,"dlsym meson_drm_getModeInfo failed, err=%s \n", dlerror());
+        goto err_labal;
+    }
+
     return handle;
 err_labal:
     if (handle) {

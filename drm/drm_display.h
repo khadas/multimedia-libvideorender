@@ -123,6 +123,7 @@ class DrmDisplay
     bool mIsDropFrames;
 
     bool mKeepLastFrame;
+    bool mPaused;
 };
 
 #endif /*__DRM_DISPLAY_WRAPPER_H__*/
