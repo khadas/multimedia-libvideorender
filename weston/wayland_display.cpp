@@ -475,6 +475,10 @@ WaylandDisplay::registryHandleGlobal (void *data, struct wl_registry *registry,
                 if (i == 0) { //primary wl_output
                     self->mOutput[i].isPrimary = true;
                 }
+                //if wl_output plugin,active sending frame
+                if (self->mOutput[self->mActiveOutput].wlOutput) {
+                    self->setRedrawingPending(false);
+                }
                 return;
             }
         }
@@ -803,14 +807,13 @@ void WaylandDisplay::setDisplayOutput(int output)
         ERROR(mLogCategory, "display output index error,please set 0:primary or 1:extend,now:%d",output);
         return;
     }
-    if (!mOutput[output].wlOutput) {
-        ERROR(mLogCategory, "Error output index,wl_output is null,now:%d",output);
-        return;
-    }
+
     if (mActiveOutput != output) {
-        setRenderRectangle(mOutput[output].offsetX, mOutput[output].offsetY,
-                        mOutput[output].width, mOutput[output].height);
         mActiveOutput = output;
+        if (mOutput[output].wlOutput) {
+            setRenderRectangle(mOutput[output].offsetX, mOutput[output].offsetY,
+                            mOutput[output].width, mOutput[output].height);
+        }
     }
 }
 
@@ -1181,6 +1184,13 @@ void WaylandDisplay::displayFrameBuffer(RenderBuffer * buf, int64_t realDisplayT
 
     if (waylandBuf) {
         wlbuffer = waylandBuf->getWlBuffer();
+    }
+    //if no wl_output, drop this buffer
+    if (mOutput[mActiveOutput].wlOutput == NULL) {
+        TRACE(mLogCategory,"No wl_output");
+        mWaylandPlugin->handleFrameDropped(buf);
+        mWaylandPlugin->handleBufferRelease(buf);
+        return;
     }
     if (wlbuffer) {
         Tls::Mutex::Autolock _l(mRenderMutex);

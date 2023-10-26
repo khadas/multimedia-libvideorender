@@ -91,6 +91,10 @@ class WaylandDisplay : public Tls::Thread{
     {
         return mShm;
     };
+    struct wl_output *getWlOutput()
+    {
+        return mOutput[mActiveOutput].wlOutput;
+    };
     /**
      * @brief Set the Select Display Output index
      *

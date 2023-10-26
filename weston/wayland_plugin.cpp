@@ -269,6 +269,13 @@ bool WaylandPlugin::threadLoop()
         goto tag_next;
     }
 
+    //if weston has no wl_outout,it means weston can't display frames
+    //so we should display buffer to display to drop buffers
+    if (mDisplay->getWlOutput() == NULL) {
+        mQueue->pop((void **)&expiredFrameEntity);
+        goto tag_post;
+    }
+
     //if weston obtains a buffer rendering,we can't send buffer to weston
     if (mDisplay->isRedrawingPending()) {
         goto tag_next;
