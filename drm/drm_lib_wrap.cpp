@@ -124,6 +124,12 @@ DrmMesonLib * drmMesonLoadLib(int logCategory)
         goto err_labal;
     }
 
+    handle->libDrmMutePlane = (lib_drm_setPlaneMute)dlsym(handle->libHandle, "meson_drm_setPlaneMute");
+    if (handle->libDrmMutePlane == NULL) {
+        ERROR(logCategory,"dlsym meson_drm_setPlaneMute failed, err=%s \n", dlerror());
+        goto err_labal;
+    }
+
     return handle;
 err_labal:
     if (handle) {

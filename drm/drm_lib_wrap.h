@@ -41,6 +41,7 @@ typedef int (*lib_drmModeAsyncAtomicCommit)(int fd, drmModeAtomicReqPtr req,
 
 typedef int (*lib_drm_waitvideoFence)( int dmabuffd);
 typedef int (*lib_drm_getModeInfo)(int drmFd, MESON_CONNECTOR_TYPE connType, DisplayMode* modeInfo);
+typedef int (*lib_drm_setPlaneMute)(int drmFd, unsigned int plane_type, unsigned int plane_mute);
 
 typedef struct {
     void *libHandle; //lib handle of dlopen
@@ -58,6 +59,7 @@ typedef struct {
     lib_drmModeAsyncAtomicCommit libDrmModeAsyncAtomicCommit;
     lib_drm_waitvideoFence libDrmWaitVideoFence;
     lib_drm_getModeInfo libDrmGetModeInfo;
+    lib_drm_setPlaneMute libDrmMutePlane;
 } DrmMesonLib;
 
 

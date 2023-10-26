@@ -120,7 +120,6 @@ class DrmDisplay
     DrmFrameRecycle *mDrmFrameRecycle;
 
     bool mHideVideo;
-    bool mIsDropFrames;
 
     bool mKeepLastFrame;
     bool mPaused;

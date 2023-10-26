@@ -52,7 +52,6 @@ DrmDisplay::DrmDisplay(DrmPlugin *plugin, int logcategory)
     mBlackFrame = NULL;
     mBlackFrameAddr = NULL;
     mHideVideo = false;
-    mIsDropFrames = false;
     mKeepLastFrame = false;
     mDrmMesonLib = drmMesonLoadLib(logcategory);
 }
@@ -138,6 +137,10 @@ bool DrmDisplay::stop()
         }
         mBlackFrame = NULL;
     }
+    //if video plane hided,we should unhide here,otherwise next playback will no video showed
+    if (mHideVideo) {
+        setHideVideo(false);
+    }
     if (mDrmHandle) {
         if (mDrmMesonLib) {
             mDrmMesonLib->libDrmDisplayDestroy(mDrmHandle);
@@ -154,16 +157,7 @@ bool DrmDisplay::displayFrame(RenderBuffer *buf, int64_t displayTime)
     FrameEntity *frameEntity = createFrameEntity(buf, displayTime);
     if (frameEntity) {
         if (mDrmFramePost) {
-            //if hided video and commit hide frame to drm,drop all frame
-            if (mIsDropFrames) {
-                handleDropedFrameEntity(frameEntity);
-                handleReleaseFrameEntity(frameEntity);
-            } else {
-                mDrmFramePost->readyPostFrame(frameEntity);
-            }
-            if (mHideVideo) {
-                mIsDropFrames = true;
-            }
+            mDrmFramePost->readyPostFrame(frameEntity);
         } else {
             WARNING(mLogCategory,"no frame post service");
             handleDropedFrameEntity(frameEntity);
@@ -304,11 +298,19 @@ void DrmDisplay::setImmediatelyOutout(bool on)
 void DrmDisplay::setHideVideo(bool hide) {
     INFO(mLogCategory,"hide video:%d",hide);
     mHideVideo = hide;
-    mIsDropFrames = false;
-    //if set hide video after paused,we should send a black frame to enable black screen
-    if (hide && mPaused) {
-        INFO(mLogCategory, "show black frame to drm");
-        showBlackFrame();
+    if (mDrmHandle && mDrmMesonLib && mDrmMesonLib->libDrmMutePlane) {
+        unsigned int planeType = 1; //0:osd plane,1:video plane
+        unsigned int planeMute; //0: unmute,1:mute
+        if (hide) {
+            planeMute = 1; //1:mute
+            INFO(mLogCategory,"mute video");
+        } else {
+            planeMute = 0; //0: unmute
+            INFO(mLogCategory,"unmute video");
+        }
+        mDrmMesonLib->libDrmMutePlane(mDrmHandle->drm_fd, planeType, planeMute);
+    } else {
+        ERROR(mLogCategory, "Error dlsym drm_mute_plane");
     }
 }
 
@@ -414,13 +416,6 @@ FrameEntity *DrmDisplay::createFrameEntity(RenderBuffer *buf, int64_t displayTim
         drmBuf->crtc_w = mDrmHandle->width;
         drmBuf->crtc_h = mDrmHandle->height;
     }
-#ifdef SUPPORT_DRM_FREEZEN
-    if (mHideVideo) {
-        drmBuf->disable_plane = 1;
-    } else {
-        drmBuf->disable_plane = 0;
-    }
-#endif
 
     frame->drmBuf = drmBuf;
     TRACE(mLogCategory,"crtc(%d,%d,%d,%d),src(%d,%d,%d,%d)",drmBuf->crtc_x,drmBuf->crtc_y,drmBuf->crtc_w,drmBuf->crtc_h,
