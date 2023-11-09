@@ -409,7 +409,7 @@ int WstClientPlugin::setValue(PluginKey key, void *value)
         case PLUGIN_KEY_VIDEO_PIP: {
             int pip = *(int *) (value);
             mIsVideoPip = pip > 0? true:false;
-        };
+        } break;
         case PLUGIN_KEY_KEEP_LAST_FRAME: {
             int keep = *(int *) (value);
             mKeepLastFrame.value = keep > 0? true:false;
