@@ -29,6 +29,7 @@
 #endif
 
 #define UNUSED_PARAM(x) ((void)(x))
+#define INVALID_OUTPUT_INDEX (-1)
 
 #define TAG "rlib:wayland_display"
 
@@ -135,16 +136,11 @@ void WaylandDisplay::outputHandleMode( void *data,
                 self->mOutput[i].refreshRate = refreshRate;
             }
         }
-        //if a displayoutput had been selected,set this rectangle to wayland
-        int selectOutput = self->mActiveOutput;
-        DEBUG(self->mLogCategory,"wl_output: %p (%dx%d) refreshrate:%d,active output index %d\n",output, width, height,refreshRate,selectOutput);
-        if (selectOutput >= 0 && selectOutput < DEFAULT_DISPLAY_OUTPUT_NUM) {
-            if (self->mOutput[selectOutput].width > 0 && self->mOutput[selectOutput].height > 0) {
-                self->setRenderRectangle(self->mOutput[selectOutput].offsetX,
-                        self->mOutput[selectOutput].offsetY,
-                        self->mOutput[selectOutput].width,
-                        self->mOutput[selectOutput].height);
-            }
+
+        DEBUG(self->mLogCategory,"wl_output: %p (%dx%d) refreshrate:%d,select output index %d",output, width, height,refreshRate,self->mSelectOutputIndex);
+        if (self->mCurrentDisplayOutput->width > 0 &&
+            self->mCurrentDisplayOutput->height > 0) {
+            self->updateDisplayOutput();
         }
     }
 }
@@ -404,12 +400,12 @@ void WaylandDisplay::handleXdgToplevelConfigure (void *data, struct xdg_toplevel
     if (width <= 0 || height <= 0)
         return;
 
-    int selectOutput = self->mActiveOutput;
-    if (width == self->mOutput[selectOutput].width && height == self->mOutput[selectOutput].height) {
-        self->setRenderRectangle(self->mOutput[selectOutput].offsetX,
-                            self->mOutput[selectOutput].offsetY,
-                            self->mOutput[selectOutput].width,
-                            self->mOutput[selectOutput].height);
+    if (width == self->mCurrentDisplayOutput->width && height == self->mCurrentDisplayOutput->height && self->mUpdateRenderRectangle) {
+        self->mUpdateRenderRectangle = false;
+        self->setRenderRectangle(self->mCurrentDisplayOutput->offsetX,
+                            self->mCurrentDisplayOutput->offsetY,
+                            self->mCurrentDisplayOutput->width,
+                            self->mCurrentDisplayOutput->height);
     } else{
         self->setRenderRectangle(self->mRenderRect.x, self->mRenderRect.y, width, height);
     }
@@ -429,10 +425,7 @@ void WaylandDisplay::handleXdgSurfaceConfigure (void *data, struct xdg_surface *
     TRACE(self->mLogCategory,"handleXdgSurfaceConfigure");
     Tls::Mutex::Autolock _l(self->mConfigureMutex);
     self->mXdgSurfaceConfigured = true;
-    if (self->mRenderRect.w > 0 && self->mRenderRect.h) {
-        DEBUG(self->mLogCategory,"set xdg surface geometry(%d,%d,%d,%d)",self->mRenderRect.x,self->mRenderRect.y,self->mRenderRect.w,self->mRenderRect.h);
-        xdg_surface_set_window_geometry(self->mXdgSurface,self->mRenderRect.x,self->mRenderRect.y,self->mRenderRect.w,self->mRenderRect.h);
-    }
+    self->updateDisplayOutput();
 }
 
 static const struct xdg_surface_listener xdg_surface_listener = {
@@ -467,22 +460,44 @@ WaylandDisplay::registryHandleGlobal (void *data, struct wl_registry *registry,
         self->mDmabuf = (struct zwp_linux_dmabuf_v1 *)wl_registry_bind (registry, name, &zwp_linux_dmabuf_v1_interface, 3);
         zwp_linux_dmabuf_v1_add_listener (self->mDmabuf, &dmabuf_listener, (void *)self);
     }  else if (strcmp (interface, "wl_output") == 0) {
+        int i = 0;
+        uint32_t oriName = self->mCurrentDisplayOutput->name;
         for (int i = 0; i < DEFAULT_DISPLAY_OUTPUT_NUM; i++) {
             if (self->mOutput[i].wlOutput ==  NULL) {
                 self->mOutput[i].name = name;
                 self->mOutput[i].wlOutput = (struct wl_output*)wl_registry_bind(registry, name, &wl_output_interface, version);
+                TRACE(self->mLogCategory,"name:%u, wl_output:%p, select:%d",self->mOutput[i].name,self->mOutput[i].wlOutput,self->mSelectOutputIndex);
                 wl_output_add_listener(self->mOutput[i].wlOutput, &outputListener, (void *)self);
                 if (i == 0) { //primary wl_output
                     self->mOutput[i].isPrimary = true;
                 }
-                //if wl_output plugin,active sending frame
-                if (self->mOutput[self->mActiveOutput].wlOutput) {
-                    self->setRedrawingPending(false);
-                }
-                return;
+                break;
             }
         }
-        WARNING(self->mLogCategory,"Not enough free output");
+        if (i == DEFAULT_DISPLAY_OUTPUT_NUM) {
+            WARNING(self->mLogCategory,"Not enough free output");
+        }
+        //select current wl_output
+        if (self->mSelectOutputIndex != INVALID_OUTPUT_INDEX && !self->isRunning()) {
+            TRACE(self->mLogCategory,"select %d output",self->mSelectOutputIndex);
+            self->mCurrentDisplayOutput = &self->mOutput[self->mSelectOutputIndex];
+        }
+        //if user select a wrong output index, we using a suiteble wl_output
+        if (self->mCurrentDisplayOutput->wlOutput == NULL) {
+            WARNING(self->mLogCategory,"wl_output is null,we should find a suiteble output");
+            for (i = 0; i < DEFAULT_DISPLAY_OUTPUT_NUM; i++) {
+                if (self->mOutput[i].wlOutput) {
+                    self->mCurrentDisplayOutput = &self->mOutput[i];
+                    break;
+                }
+            }
+        }
+        //if current wl_output update, we should update render rectangle
+        if (self->mCurrentDisplayOutput->name != oriName) {
+            self->mUpdateRenderRectangle = true;
+        }
+        //if wl_output plugin,active sending frame
+        self->setRedrawingPending(false);
     } else if (strcmp(interface, "wl_seat") == 0) {
         //self->mSeat = (struct wl_seat *)wl_registry_bind(registry, name, &wl_seat_interface, 1);
         //wl_seat_add_listener(self->mSeat, &seat_listener, (void *)self);
@@ -492,14 +507,38 @@ WaylandDisplay::registryHandleGlobal (void *data, struct wl_registry *registry,
 void
 WaylandDisplay::registryHandleGlobalRemove (void *data, struct wl_registry *registry, uint32_t name)
 {
+    int i;
     WaylandDisplay *self = static_cast<WaylandDisplay *>(data);
     /* check wl_output changed */
     DEBUG(self->mLogCategory,"wayland display remove registry handle global,name:%u",name);
-    for (int i = 0; i < DEFAULT_DISPLAY_OUTPUT_NUM; i++) {
+    //if user selected wl_output removed, reset selected output index
+    if (self->mSelectOutputIndex != INVALID_OUTPUT_INDEX &&
+        self->mOutput[self->mSelectOutputIndex].wlOutput &&
+        self->mOutput[self->mSelectOutputIndex].name == name) {
+            self->mSelectOutputIndex = INVALID_OUTPUT_INDEX;
+    }
+    for (i = 0; i < DEFAULT_DISPLAY_OUTPUT_NUM; i++) {
         if (self->mOutput[i].name == name) {
+            DEBUG(self->mLogCategory,"remove wl_output name:%u,wl_output:%p",name,self->mOutput[i].wlOutput);
             self->mOutput[i].name = 0;
             self->mOutput[i].wlOutput = NULL;
-            DEBUG(self->mLogCategory,"remove wl_output name:%u",name);
+        }
+    }
+    //if current output removed, select a suiteble output
+    if (self->mCurrentDisplayOutput->wlOutput == NULL) {
+        for (i = 0; i < DEFAULT_DISPLAY_OUTPUT_NUM; i++) {
+            if (self->mOutput[i].wlOutput) {
+                self->mCurrentDisplayOutput = &self->mOutput[i];
+                self->mUpdateRenderRectangle = true;
+            }
+        }
+        //set new output rectangle
+        if (self->mUpdateRenderRectangle) {
+            self->mUpdateRenderRectangle = false;
+            self->setRenderRectangle(self->mCurrentDisplayOutput->offsetX,
+                                    self->mCurrentDisplayOutput->offsetY,
+                                    self->mCurrentDisplayOutput->width,
+                                    self->mCurrentDisplayOutput->height);
         }
     }
 }
@@ -528,7 +567,7 @@ WaylandDisplay::WaylandDisplay(WaylandPlugin *plugin, int logCategory)
     mPointer = NULL;
     mTouch = NULL;
     mKeyboard = NULL;
-    mActiveOutput = 0; //default is primary output
+    mSelectOutputIndex = INVALID_OUTPUT_INDEX;
     mPoll = new Tls::Poll(true);
     //window
     mVideoWidth = 0;
@@ -550,6 +589,8 @@ WaylandDisplay::WaylandDisplay(WaylandPlugin *plugin, int logCategory)
     mXdgSurfaceConfigured = false;
     mPip = 0;
     mIsSendVideoPlaneId = true;
+    mCurrentDisplayOutput = &mOutput[0];
+    mUpdateRenderRectangle = false;
     memset(&mRenderRect, 0, sizeof(struct Rectangle));
     memset(&mVideoRect, 0, sizeof(struct Rectangle));
     memset(&mWindowRect, 0, sizeof(struct Rectangle));
@@ -807,25 +848,57 @@ void WaylandDisplay::setDisplayOutput(int output)
         ERROR(mLogCategory, "display output index error,please set 0:primary or 1:extend,now:%d",output);
         return;
     }
-
-    if (mActiveOutput != output) {
-        mActiveOutput = output;
-        if (mOutput[output].wlOutput) {
-            setRenderRectangle(mOutput[output].offsetX, mOutput[output].offsetY,
-                            mOutput[output].width, mOutput[output].height);
-        }
+    //only do select output before video playing
+    if (mSelectOutputIndex != output) {
+        mSelectOutputIndex = output;
+        // if (mOutput[output].wlOutput) {
+        //     mCurrentDisplayOutput = &mOutput[output];
+        //     setRenderRectangle(mOutput[output].offsetX, mOutput[output].offsetY,
+        //                     mOutput[output].width, mOutput[output].height);
+        // }
     }
 }
 
 int WaylandDisplay::getDisplayOutput()
 {
-    return mActiveOutput;
+    return mSelectOutputIndex == INVALID_OUTPUT_INDEX? 0: mSelectOutputIndex;
 }
 
 void WaylandDisplay::setPip(int pip)
 {
     INFO(mLogCategory,"set pip:%d",pip);
     mPip = pip;
+}
+
+void WaylandDisplay::updateDisplayOutput()
+{
+    if (!mCurrentDisplayOutput->wlOutput || !mXdgToplevel || !mXdgSurface)
+    {
+        return;
+    }
+    if (mUpdateRenderRectangle) {
+        if (mFullScreen) {
+            DEBUG(mLogCategory,"unset full screen");
+            xdg_toplevel_unset_fullscreen (mXdgToplevel);
+        }
+
+        if (mXdgSurface) {
+            DEBUG(mLogCategory,"set geometry");
+            xdg_surface_set_window_geometry(mXdgSurface,
+                                            mCurrentDisplayOutput->offsetX,
+                                            mCurrentDisplayOutput->offsetY,
+                                            mCurrentDisplayOutput->width,
+                                            mCurrentDisplayOutput->height);
+        }
+
+        if (mFullScreen && mXdgToplevel) {
+            DEBUG(mLogCategory,"set full screen");
+            xdg_toplevel_set_fullscreen (mXdgToplevel, mCurrentDisplayOutput->wlOutput);
+        }
+        setRenderRectangle(mCurrentDisplayOutput->offsetX, mCurrentDisplayOutput->offsetY,
+                        mCurrentDisplayOutput->width, mCurrentDisplayOutput->height);
+        mUpdateRenderRectangle = false;
+    }
 }
 
 void WaylandDisplay::createCommonWindowSurface()
@@ -897,14 +970,8 @@ void WaylandDisplay::createXdgShellWindowSurface()
         }
 
         //full screen show
-        if (mFullScreen && mOutput[mActiveOutput].wlOutput) {
-            ensureFullscreen(mFullScreen);
-        }
-
-        //if wl_output had detected, the width and height of mRenderRect will be set
-        //we need invoking setRenderRectangle
-        // if (mRenderRect.w > 0 && mRenderRect.h > 0) {
-        //     setRenderRectangle(mRenderRect.x, mRenderRect.y, mRenderRect.w, mRenderRect.h);
+        // if (mFullScreen && mCurrentDisplayOutput->wlOutput) {
+        //     //ensureFullscreen(mFullScreen);
         // }
     } else {
         ERROR(mLogCategory,"Unable to use xdg_wm_base ");
@@ -964,7 +1031,7 @@ void WaylandDisplay::ensureFullscreen(bool fullscreen)
     if (mXdgWmBase) {
         DEBUG(mLogCategory,"full screen : %d",fullscreen);
         if (fullscreen) {
-            xdg_toplevel_set_fullscreen (mXdgToplevel, mOutput[mActiveOutput].wlOutput);
+            xdg_toplevel_set_fullscreen (mXdgToplevel, mCurrentDisplayOutput->wlOutput);
         } else {
             xdg_toplevel_unset_fullscreen (mXdgToplevel);
         }
@@ -1186,7 +1253,7 @@ void WaylandDisplay::displayFrameBuffer(RenderBuffer * buf, int64_t realDisplayT
         wlbuffer = waylandBuf->getWlBuffer();
     }
     //if no wl_output, drop this buffer
-    if (mOutput[mActiveOutput].wlOutput == NULL) {
+    if (mCurrentDisplayOutput->wlOutput == NULL) {
         TRACE(mLogCategory,"No wl_output");
         mWaylandPlugin->handleFrameDropped(buf);
         mWaylandPlugin->handleBufferRelease(buf);

@@ -93,7 +93,10 @@ class WaylandDisplay : public Tls::Thread{
     };
     struct wl_output *getWlOutput()
     {
-        return mOutput[mActiveOutput].wlOutput;
+        if (mCurrentDisplayOutput) {
+            return mCurrentDisplayOutput->wlOutput;
+        }
+        return NULL;
     };
     /**
      * @brief Set the Select Display Output index
@@ -126,6 +129,8 @@ class WaylandDisplay : public Tls::Thread{
     bool isRedrawingPending() {
         return mRedrawingPending;
     };
+
+    void updateDisplayOutput();
 
     void setRenderRectangle(int x, int y, int w, int h);
     void setFrameSize(int w, int h);
@@ -259,8 +264,9 @@ class WaylandDisplay : public Tls::Thread{
 
     /*primary output will signal first,so 0 index is primary wl_output, 1 index is extend wl_output*/
     DisplayOutput mOutput[DEFAULT_DISPLAY_OUTPUT_NUM]; //info about wl_output
-    int mActiveOutput; //default is primary output
-
+    /*default is -1, it means user don't select any output,using primary wl_output*/
+    int mSelectOutputIndex; // value is -1,0,1, value < DEFAULT_DISPLAY_OUTPUT_NUM
+    DisplayOutput *mCurrentDisplayOutput;
     int mLogCategory;
 
     std::list<uint32_t> mShmFormats;
@@ -292,6 +298,8 @@ class WaylandDisplay : public Tls::Thread{
     bool mIsSendPtsToWeston;
 
     bool mReCommitAreaSurface;
+
+    bool mUpdateRenderRectangle;
 
     /* the size and position of the area_(sub)surface
     it is full screen size now*/
