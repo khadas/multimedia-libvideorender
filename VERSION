@@ -1,0 +1,17 @@
+Major_V=1
+Minor_V=1
+BaseChangeId=If22f048dc81303193b850a26f7a018fb0e58341d
+
+#V1.0.11 Release Notes
+#Release_ChangeId_V1_1=If22f048dc81303193b850a26f7a018fb0e58341d
+#show/hide video with new libdrm api
+#fix no video when output plug in on weston
+#fix keep last frame issue
+#do not send frame to weston when output removed
+#fix video freeze when HDMI output plug in/output
+#fix crash when wl_output changed on weston
+#changed log level environment
+#fix plugin disconnect take too long time
+#only enable av sync on render libdrm
+#fix drm so loading fail
+#new git for libvideorender
