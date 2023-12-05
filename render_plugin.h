@@ -46,7 +46,8 @@ typedef enum _PluginKey {
     PLUGIN_KEY_SELECT_DISPLAY_OUTPUT,//set/get selected displayt output,value type is int,0 is primary output, 1 is extend output
     PLUGIN_KEY_IMMEDIATELY_OUTPUT, //set/get immediately output video frame to display, 0 is default value off, 1 is on
     PLUGIN_KEY_CROP_FRAME_SIZE, //set/get crop frame size,value type is PluginRect
-    PLUGIN_KEY_PIXEL_ASPECT_RATIO, //set/get pixel aspect ratio,valut type is PixelAspectRatio
+    PLUGIN_KEY_PIXEL_ASPECT_RATIO, //set/get pixel aspect ratio,value type is double
+    PLUGIN_KEY_VIDEO_FRAME_RATE, //set/get video frame rate,value type is RenderFraction
 } PluginKey;
 
 /**

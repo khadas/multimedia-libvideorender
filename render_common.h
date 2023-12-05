@@ -60,7 +60,7 @@ typedef struct _RenderBuffer {
 } RenderBuffer;
 
 /*video render rectangle*/
-typedef struct  {
+typedef struct _RenderRect{
     int x;
     int y;
     int w;
@@ -72,6 +72,11 @@ typedef struct _RenderFrameSize {
     int width;
     int height;
 } RenderFrameSize;
+
+typedef struct {
+   int num; //numerator
+   int denom; //denominator
+} RenderFraction;
 
 typedef enum _RenderMsgType {
     //notify a msg

@@ -40,6 +40,9 @@ WstClientPlugin::WstClientPlugin(int logCategory)
     mFirstFramePts = -1;
     mImmediatelyOutput = false;
     mSetCropFrameRect = false;
+    mFrameRateFractionNum = 0;
+    mFrameRateFractionDenom = 0;
+    mFrameRateChanged = false;
     mWstEssRMgrOps = new WstEssRMgrOps(this,logCategory);
 }
 
@@ -184,6 +187,11 @@ int WstClientPlugin::displayFrame(RenderBuffer *buffer, int64_t displayTime)
     WstBufferInfo wstBufferInfo;
     WstRect wstRect;
     int x,y,w,h;
+
+    if (mWstClientSocket && mFrameRateChanged) {
+        mFrameRateChanged = false;
+        mWstClientSocket->sendRateVideoClientConnection(mFrameRateFractionNum, mFrameRateFractionDenom);
+    }
 
     mWayland->getVideoBounds(&x, &y, &w, &h);
 
@@ -457,6 +465,23 @@ int WstClientPlugin::setValue(PluginKey key, void *value)
             INFO(mLogCategory,"pixel aspect ratio :%f",ratio);
             if (mWayland) {
                 mWayland->setPixelAspectRatio((double)ratio);
+            }
+        } break;
+        case PLUGIN_KEY_VIDEO_FRAME_RATE: {
+            RenderFraction * fraction = static_cast<RenderFraction*>(value);
+            INFO(mLogCategory,"frame rate,num:%d,denom:%d",fraction->num,fraction->denom);
+            if (fraction->num != mFrameRateFractionNum ||
+                fraction->denom != mFrameRateFractionDenom) {
+                mFrameRateFractionNum = fraction->num;
+                mFrameRateFractionDenom = fraction->denom;
+                if (mFrameRateFractionDenom == 0) {
+                    mFrameRateFractionDenom = 1;
+                }
+                mFrameRateChanged = true;
+            }
+            if (mWstClientSocket && mFrameRateChanged) {
+                mFrameRateChanged = false;
+                mWstClientSocket->sendRateVideoClientConnection(mFrameRateFractionNum, mFrameRateFractionDenom);
             }
         } break;
     }

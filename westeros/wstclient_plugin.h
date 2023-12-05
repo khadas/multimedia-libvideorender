@@ -106,6 +106,10 @@ class WstClientPlugin : public RenderPlugin
 
     //essos resource manager
     WstEssRMgrOps *mWstEssRMgrOps;
+
+    int mFrameRateFractionNum;
+    int mFrameRateFractionDenom;
+    bool mFrameRateChanged;
 };
 
 
