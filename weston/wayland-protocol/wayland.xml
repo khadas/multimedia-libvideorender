@@ -2546,6 +2546,13 @@
       <arg name="factor" type="int" summary="scaling factor of output"/>
     </event>
 
+    <event name="crtc_index" since="2">
+      <description summary="crtc index of output">
+    This event contains crtc index information of the current
+    output.
+      </description>
+      <arg name="index" type="int" summary="crtc index of output"/>
+    </event>
     <!-- Version 3 additions -->
 
     <request name="release" type="destructor" since="3">

@@ -191,6 +191,10 @@ int WaylandPlugin::getValue(PluginKey key, void *value)
             *(int *)(value) = mDisplay->getDisplayOutput();
             TRACE(mLogCategory,"get select display output:%d",*(int *)value);
         } break;
+        case PLUGIN_KEY_CURRENT_OUTPUT: {
+            *(int *)(value) = mDisplay->getCurrentOutputCrtcIndex();
+            //DEBUG(mLogCategory,"get current crtc output index:%d",*(int *)value);
+        } break;
     }
     return NO_ERROR;
 }

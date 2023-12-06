@@ -111,6 +111,13 @@ class WaylandDisplay : public Tls::Thread{
      */
     int getDisplayOutput();
 
+    int getCurrentOutputCrtcIndex() {
+        if (mCurrentDisplayOutput) {
+            return mCurrentDisplayOutput->crtcIndex;
+        }
+        return 0; //default crtc index
+    };
+
     /**
      * @brief set pip video
      * @param pip if set to 1, the video data will display in pip video plane
@@ -177,6 +184,9 @@ class WaylandDisplay : public Tls::Thread{
     static void outputHandleScale( void *data,
                                struct wl_output *output,
                                int32_t scale );
+    static void outputHandleCrtcIndex( void *data,
+                              struct wl_output *output,
+                              int32_t index );
     static void pointerHandleEnter(void *data, struct wl_pointer *pointer,
                                 uint32_t serial, struct wl_surface *surface,
                                 wl_fixed_t sx, wl_fixed_t sy);
@@ -225,6 +235,7 @@ class WaylandDisplay : public Tls::Thread{
         int refreshRate;
         bool isPrimary;
         uint32_t name;
+        int32_t crtcIndex;
     } DisplayOutput;
     struct Rectangle {
         int x;

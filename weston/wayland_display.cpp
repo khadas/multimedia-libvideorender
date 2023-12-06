@@ -148,6 +148,8 @@ void WaylandDisplay::outputHandleMode( void *data,
 void WaylandDisplay::outputHandleDone( void *data,
                               struct wl_output *output )
 {
+    WaylandDisplay *self = static_cast<WaylandDisplay *>(data);
+    DEBUG(self->mLogCategory,"wl_output: %p",output);
     UNUSED_PARAM(data);
     UNUSED_PARAM(output);
 }
@@ -156,16 +158,33 @@ void WaylandDisplay::outputHandleScale( void *data,
                                struct wl_output *output,
                                int32_t scale )
 {
+    WaylandDisplay *self = static_cast<WaylandDisplay *>(data);
+    DEBUG(self->mLogCategory,"wl_output: %p scale %d",output, scale);
     UNUSED_PARAM(data);
     UNUSED_PARAM(output);
     UNUSED_PARAM(scale);
+}
+
+void WaylandDisplay::outputHandleCrtcIndex( void *data,
+                              struct wl_output *output,
+                              int32_t index )
+{
+    WaylandDisplay *self = static_cast<WaylandDisplay *>(data);
+    DEBUG(self->mLogCategory,"wl_output: %p crtc index %d",output, index);
+    Tls::Mutex::Autolock _l(self->mMutex);
+    for (int i = 0; i < DEFAULT_DISPLAY_OUTPUT_NUM; i++) {
+        if (output == self->mOutput[i].wlOutput) {
+            self->mOutput[i].crtcIndex = index;
+        }
+    }
 }
 
 static const struct wl_output_listener outputListener = {
     WaylandDisplay::outputHandleGeometry,
     WaylandDisplay::outputHandleMode,
     WaylandDisplay::outputHandleDone,
-    WaylandDisplay::outputHandleScale
+    WaylandDisplay::outputHandleScale,
+    WaylandDisplay::outputHandleCrtcIndex,
 };
 
 void WaylandDisplay::pointerHandleEnter(void *data, struct wl_pointer *pointer,
