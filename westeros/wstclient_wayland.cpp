@@ -698,6 +698,7 @@ void WstClientWayland::getVideoBounds(int *x, int *y, int *w, int *h)
         }
         break;
         case ZOOM_NONE:
+        break;
         case ZOOM_DIRECT:
         {
             if ( arf >= ard )
