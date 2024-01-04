@@ -645,6 +645,7 @@ WaylandDisplay::WaylandDisplay(WaylandPlugin *plugin, int logCategory)
         mOutput[i].refreshRate = 0;
         mOutput[i].isPrimary = false;
         mOutput[i].name = 0;
+        mOutput[i].crtcIndex = 0;
     }
 }
 
