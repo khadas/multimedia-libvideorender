@@ -299,6 +299,7 @@ int WstClientPlugin::pause()
             mWstClientSocket->sendPauseVideoClientConnection(true);
         }
     }
+    mWayland->setPause(true);
     mWstEssRMgrOps->resMgrUpdateState(EssRMgrRes_paused);
     return NO_ERROR;
 }
@@ -311,6 +312,7 @@ int WstClientPlugin::resume()
     if (mWstClientSocket) {
         mWstClientSocket->sendPauseVideoClientConnection(false);
     }
+    mWayland->setPause(false);
     mWstEssRMgrOps->resMgrUpdateState(EssRMgrRes_active);
     return NO_ERROR;
 }

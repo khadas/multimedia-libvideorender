@@ -92,6 +92,10 @@ class WstClientWayland : public Tls::Thread{
         *w = mFrameWidth;
         *h = mFrameHeight;
     };
+    void setPause(bool paused)
+    {
+        mVideoPaused = paused;
+    };
 
     void setZoomMode(int zoomMode, bool globalZoomActive, bool allow4kZoom);
 

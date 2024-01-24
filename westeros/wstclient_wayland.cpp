@@ -158,7 +158,7 @@ void WstClientWayland::vpcVideoPathChange(void *data,
     WESTEROS_UNUSED(wl_vpc_surface);
     WstClientWayland *self = static_cast<WstClientWayland *>(data);
 
-    INFO(self->mLogCategory,"new pathway: %d\n", new_pathway);
+    INFO(self->mLogCategory,"new pathway: %d", new_pathway);
     self->setVideoPath(new_pathway == WL_VPC_SURFACE_PATHWAY_GRAPHICS);
 }
 
@@ -243,7 +243,7 @@ void WstClientWayland::outputHandleMode( void *data,
         Tls::Mutex::Autolock _l(self->mMutex);
         self->mDisplayWidth = width;
         self->mDisplayHeight = height;
-        DEBUG(self->mLogCategory,"compositor sets window to (%dx%d)\n", width, height);
+        DEBUG(self->mLogCategory,"compositor sets window to (%dx%d)", width, height);
         if (!self->mWindowSet)
         {
             self->mWindowWidth = width;
@@ -285,7 +285,7 @@ void WstClientWayland::sbFormat(void *data, struct wl_sb *wl_sb, uint32_t format
     WstClientWayland *self = static_cast<WstClientWayland *>(data);
     WESTEROS_UNUSED(wl_sb);
     WESTEROS_UNUSED(data);
-    TRACE(self->mLogCategory,"registry: sbFormat: %X\n", format);
+    TRACE(self->mLogCategory,"registry: sbFormat: %X", format);
 }
 
 static const struct wl_sb_listener sbListener = {
@@ -378,6 +378,7 @@ WstClientWayland::WstClientWayland(WstClientPlugin *plugin, int logCategory)
     mScaleXDenom = 0;
     mScaleYDenom = 0;
     mForceFullScreen = false;
+    mVideoPaused = false;
     mPoll = new Tls::Poll(true);
 }
 
@@ -564,14 +565,19 @@ void WstClientWayland::setWindowSize(int x, int y, int w, int h)
     mWindowSet = true;
     mWindowSizeOverride = true;
     DEBUG(mLogCategory,"set window size:x:%d,y:%d,w:%d,h:%d",x,y,w,h);
+
     if (mWlVpcSurface) {
         DEBUG(mLogCategory, "wl_vpc_surface_set_geometry(%d,%d,%d,%d)",mWindowX,mWindowY,mWindowWidth,mWindowHeight);
         wl_vpc_surface_set_geometry(mWlVpcSurface, mWindowX, mWindowY, mWindowWidth, mWindowHeight);
     }
     //if window size is updated, update video position
-    if (mWlVpcSurface && mWindowChange && mScaleXDenom != 0 && mScaleYDenom != 0) {
+    if (mVideoPaused && mWlVpcSurface && mWindowChange && mScaleXDenom != 0 && mScaleYDenom != 0) {
         mWindowChange = false;
         updateVideoPosition();
+    }
+
+    if (mWlDisplay) {
+        wl_display_flush( mWlDisplay );
     }
 }
 
@@ -953,10 +959,10 @@ void WstClientWayland::updateVideoPosition()
             wl_surface_damage(mWlSurface, 0, 0, mWindowWidth, mWindowHeight);
             wl_surface_commit(mWlSurface);
         }
-        if (mVideoPaused && mPlugin)
-        {
-            mPlugin->setVideoRect(mVideoX, mVideoY, mVideoWidth, mVideoHeight);
-        }
+    }
+    if (mPlugin)
+    {
+        mPlugin->setVideoRect(mVideoX, mVideoY, mVideoWidth, mVideoHeight);
     }
 }
 
