@@ -446,6 +446,8 @@ int WstClientWayland::connectToWayland()
             ERROR(mLogCategory, "wayland connect rlib-display fail");
             return ERROR_OPEN_FAIL;
         }
+        setenv("XDG_RUNTIME_DIR",xdgEnv,0);
+        setenv("WAYLAND_DISPLAY",displayName,0);
         INFO(mLogCategory,"wayland connected to rlib-display");
     }
 
@@ -1065,8 +1067,10 @@ tag_error:
 void WstClientWayland::executeCmd(const char *cmd) {
     INFO(mLogCategory,"%s", cmd);
     FILE* pFile = popen(cmd, "r");
-    char buf[128];
-    char* retStr = fgets(buf, sizeof(buf), pFile);
-    INFO(mLogCategory,"ret= %s", retStr);
-    pclose(pFile);
+    if (pFile) {
+        char buf[128];
+        char* retStr = fgets(buf, sizeof(buf), pFile);
+        INFO(mLogCategory,"ret= %s", retStr);
+        pclose(pFile);
+    }
 }
