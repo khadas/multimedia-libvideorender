@@ -520,6 +520,8 @@ WaylandDisplay::registryHandleGlobal (void *data, struct wl_registry *registry,
     } else if (strcmp(interface, "wl_seat") == 0) {
         //self->mSeat = (struct wl_seat *)wl_registry_bind(registry, name, &wl_seat_interface, 1);
         //wl_seat_add_listener(self->mSeat, &seat_listener, (void *)self);
+    } else if (strcmp(interface, "weston_direct_display_v1") == 0) {
+        self->mDirect_display = (struct weston_direct_display_v1 *)wl_registry_bind(registry,name, &weston_direct_display_v1_interface, 1);
     }
 }
 
@@ -586,6 +588,7 @@ WaylandDisplay::WaylandDisplay(WaylandPlugin *plugin, int logCategory)
     mPointer = NULL;
     mTouch = NULL;
     mKeyboard = NULL;
+    mDirect_display = NULL;
     mSelectOutputIndex = INVALID_OUTPUT_INDEX;
     mPoll = new Tls::Poll(true);
     //window

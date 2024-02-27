@@ -114,6 +114,10 @@ struct wl_buffer *WaylandDmaBuffer::constructWlBuffer(RenderDmaBuffer *dmabuf, R
         ERROR(mLogCategory, "zwp_linux_dmabuf_v1_create_params fail");
         return NULL;
     }
+    //told weston to direct display drm buffer
+    if (mDisplay->getWlDirectDisplay()) {
+        weston_direct_display_v1_enable(mDisplay->getWlDirectDisplay(), params);
+    }
     for (int i = 0; i < dmabuf->planeCnt; i++) {
         TRACE(mLogCategory,"dma buf index:%d,fd:%d,stride:%d,offset:%d",i, dmabuf->fd[i],dmabuf->stride[i], dmabuf->offset[i]);
         zwp_linux_buffer_params_v1_add(params,

@@ -58,7 +58,9 @@ GENERATED_SOURCES = \
 	$(PROTOCOL_PATH)/simpleshell-protocol.c \
 	$(PROTOCOL_PATH)/simpleshell-client-protocol.h \
 	$(PROTOCOL_PATH)/simpleshell-server-protocol.h \
-	$(PROTOCOL_PATH)/wayland-client-protocol.h
+	$(PROTOCOL_PATH)/wayland-client-protocol.h \
+	$(PROTOCOL_PATH)/weston-direct-display-protocol.c \
+	$(PROTOCOL_PATH)/weston-direct-display-client-protocol.h
 
 OBJ_WESTON_DISPLAY = \
 	wayland_display.o \

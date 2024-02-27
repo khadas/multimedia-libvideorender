@@ -28,6 +28,7 @@
 #include "linux-dmabuf-unstable-v1-client-protocol.h"
 #include "linux-explicit-synchronization-unstable-v1-client-protocol.h"
 #include "viewporter-client-protocol.h"
+#include "weston-direct-display-client-protocol.h"
 #include "wayland-cursor.h"
 #include "Thread.h"
 #include "Poll.h"
@@ -82,6 +83,9 @@ class WaylandDisplay : public Tls::Thread{
     };
     struct wl_display *getWlDisplay() {
         return mWlDisplay;
+    };
+    struct weston_direct_display_v1 *getWlDirectDisplay() {
+        return mDirect_display;
     };
     struct zwp_linux_dmabuf_v1 * getDmaBuf()
     {
@@ -272,6 +276,7 @@ class WaylandDisplay : public Tls::Thread{
     struct wl_pointer *mPointer;
     struct wl_touch *mTouch;
     struct wl_keyboard *mKeyboard;
+    struct weston_direct_display_v1 *mDirect_display;
 
     /*primary output will signal first,so 0 index is primary wl_output, 1 index is extend wl_output*/
     DisplayOutput mOutput[DEFAULT_DISPLAY_OUTPUT_NUM]; //info about wl_output
