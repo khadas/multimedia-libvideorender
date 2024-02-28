@@ -209,11 +209,11 @@ void WstClientSocket::sendResourceVideoClientConnection(bool pip)
     }
 }
 
-void WstClientSocket::sendFlushVideoClientConnection()
+void WstClientSocket::sendFlushVideoClientConnection(bool keepOnFlush)
 {
     struct msghdr msg;
     struct iovec iov[1];
-    unsigned char mbody[4];
+    unsigned char mbody[5];
     int len;
     int sentLen;
 
@@ -228,8 +228,9 @@ void WstClientSocket::sendFlushVideoClientConnection()
     len = 0;
     mbody[len++] = 'V';
     mbody[len++] = 'S';
-    mbody[len++] = 1;
+    mbody[len++] = 2;
     mbody[len++] = 'S';
+    mbody[len++] = keepOnFlush? 1:0;
 
     iov[0].iov_base = (char*)mbody;
     iov[0].iov_len = len;

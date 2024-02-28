@@ -82,6 +82,7 @@ class WstClientPlugin : public RenderPlugin
     int mLogCategory;
 
     ConfigValue mKeepLastFrame;
+    ConfigValue mKeepLastFrameOnFlush;
     ConfigValue mHideVideo;
 
     std::mutex mRenderLock;

@@ -35,6 +35,8 @@ WstClientPlugin::WstClientPlugin(int logCategory)
     mWstClientSocket = NULL;
     mKeepLastFrame.isSet = false;
     mKeepLastFrame.value = 0;
+    mKeepLastFrameOnFlush.isSet = false;
+    mKeepLastFrameOnFlush.value = 1;
     mHideVideo.isSet = false;
     mHideVideo.value = 0;
     mFirstFramePts = -1;
@@ -264,7 +266,7 @@ int WstClientPlugin::flush()
     int ret;
     INFO(mLogCategory,"flush");
     if (mWstClientSocket) {
-        mWstClientSocket->sendFlushVideoClientConnection();
+        mWstClientSocket->sendFlushVideoClientConnection(mKeepLastFrameOnFlush.value);
     }
     //drop frames those had committed to westeros
     std::lock_guard<std::mutex> lck(mRenderLock);
@@ -376,6 +378,10 @@ int WstClientPlugin::getValue(PluginKey key, void *value)
             *(int *)value = mKeepLastFrame.value;
             TRACE(mLogCategory,"get keep last frame:%d",*(int *)value);
         } break;
+        case PLUGIN_KEY_KEEP_LAST_FRAME_ON_FLUSH: {
+            *(int *)value = mKeepLastFrameOnFlush.value;
+            TRACE(mLogCategory,"get keep last frame on flush:%d",*(int *)value);
+        } break;
         case PLUGIN_KEY_HIDE_VIDEO: {
             *(int *)value = mHideVideo.value;
             TRACE(mLogCategory,"get hide video:%d",*(int *)value);
@@ -428,6 +434,12 @@ int WstClientPlugin::setValue(PluginKey key, void *value)
             if (mWstClientSocket) {
                 mWstClientSocket->sendKeepLastFrameVideoClientConnection(mKeepLastFrame.value);
             }
+        } break;
+        case PLUGIN_KEY_KEEP_LAST_FRAME_ON_FLUSH: {
+            int keepOnFlush = *(int *) (value);
+            mKeepLastFrameOnFlush.value = keepOnFlush > 0? true:false;
+            mKeepLastFrameOnFlush.isSet = true;
+            DEBUG(mLogCategory, "Set keep last frame on flush :%d",mKeepLastFrameOnFlush.value);
         } break;
         case PLUGIN_KEY_HIDE_VIDEO: {
             int hide = *(int *)(value);

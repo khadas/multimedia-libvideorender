@@ -111,7 +111,7 @@ class WstClientSocket : public Tls::Thread{
      */
     void sendLayerVideoClientConnection(bool pip);
     void sendResourceVideoClientConnection(bool pip);
-    void sendFlushVideoClientConnection();
+    void sendFlushVideoClientConnection(bool keepOnFlush);
     void sendPauseVideoClientConnection(bool pause);
     void sendHideVideoClientConnection(bool hide);
     void sendSessionInfoVideoClientConnection(int sessionId, int syncType );

@@ -49,6 +49,7 @@ typedef enum _PluginKey {
     PLUGIN_KEY_PIXEL_ASPECT_RATIO, //set/get pixel aspect ratio,value type is double
     PLUGIN_KEY_CURRENT_OUTPUT, //set/get signal output,value type is int
     PLUGIN_KEY_VIDEO_FRAME_RATE, //set/get video frame rate,value type is RenderFraction
+    PLUGIN_KEY_KEEP_LAST_FRAME_ON_FLUSH, //set/get keep last frame when seeking,value type is int, 0 not keep, 1 keep
 } PluginKey;
 
 /**
