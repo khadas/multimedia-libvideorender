@@ -39,7 +39,7 @@ WstClientPlugin::WstClientPlugin(int logCategory)
     mKeepLastFrameOnFlush.value = 1;
     mHideVideo.isSet = false;
     mHideVideo.value = 0;
-    mFirstFramePts = -1;
+    mSignalFirstFramePts = false;
     mImmediatelyOutput = false;
     mSetCropFrameRect = false;
     mFrameRateFractionNum = 0;
@@ -149,6 +149,7 @@ int WstClientPlugin::openWindow()
     mCommitFrameCnt = 0;
     mNumDroppedFrames = 0;
     mReadyDisplayFrameCnt = 0;
+    mSignalFirstFramePts = false;
     /*send session info to server
     we use mediasync to sync a/v,so select AV_SYNC_MODE_VIDEO_MONO as av clock*/
     if (mWstClientSocket) {
@@ -254,9 +255,6 @@ int WstClientPlugin::displayFrame(RenderBuffer *buffer, int64_t displayTime)
     //storage displayed render buffer
     std::pair<int, int64_t> displayitem(buffer->id, displayTime);
     mDisplayedFrameMap.insert(displayitem);
-    if (mFirstFramePts == -1) {
-        mFirstFramePts = buffer->pts;
-    }
 
     return NO_ERROR;
 }
@@ -616,7 +614,9 @@ void WstClientPlugin::onWstSocketEvent(WstEvent *event)
             }
             if (renderbuffer) {
                 //first frame signal
-                if (renderbuffer->pts == mFirstFramePts) {
+                if (!mSignalFirstFramePts) {
+                    mSignalFirstFramePts = true;
+                    INFO(mLogCategory, "post first frame");
                     handleMsgNotify(MSG_FIRST_FRAME,(void*)&renderbuffer->pts);
                 }
                 handleFrameDisplayed(renderbuffer);
@@ -626,7 +626,7 @@ void WstClientPlugin::onWstSocketEvent(WstEvent *event)
             uint64_t frameTime = event->lparam;
             TRACE(mLogCategory,"under flow frametime:%lld",frameTime);
             //under flow event sended must be after sending first frame to westeros
-            if (mFirstFramePts != -1) {
+            if (mSignalFirstFramePts) {
                 handleMsgNotify(MSG_UNDER_FLOW, NULL);
             }
         } break;

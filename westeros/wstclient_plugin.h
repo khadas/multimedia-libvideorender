@@ -91,7 +91,7 @@ class WstClientPlugin : public RenderPlugin
     int mNumDroppedFrames; //the count of dropped frames
     int mCommitFrameCnt; //the count frames of committing to server
     int mReadyDisplayFrameCnt; //the count frames of ready to display
-    int64_t mFirstFramePts; //the first display frame pts
+    bool mSignalFirstFramePts; //signal the first displayed frame pts
 
     RenderVideoFormat mBufferFormat;
     std::unordered_map<int, RenderBuffer *> mRenderBuffersMap;
