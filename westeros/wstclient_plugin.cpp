@@ -45,7 +45,8 @@ WstClientPlugin::WstClientPlugin(int logCategory)
     mFrameRateFractionNum = 0;
     mFrameRateFractionDenom = 0;
     mFrameRateChanged = false;
-    mWstEssRMgrOps = new WstEssRMgrOps(this,logCategory);
+    mWstEssRMgrOps = new WstEssRMgrOps(logCategory);
+    mWstEssRMgrOps->setCallback(WstClientPlugin::essMgrCallback, this);
 }
 
 WstClientPlugin::~WstClientPlugin()
@@ -88,11 +89,13 @@ void WstClientPlugin::init()
             BUILD_TIME,
             BUILD_NAME
     );
+    mWstEssRMgrOps->resMgrInit();
 }
 
 void WstClientPlugin::release()
 {
     DEBUG(mLogCategory,"release");
+    mWstEssRMgrOps->resMgrTerm();
 }
 
 void WstClientPlugin::setCallback(void *userData, PluginCallback *callback)
@@ -107,7 +110,6 @@ int WstClientPlugin::openDisplay()
 
     DEBUG(mLogCategory,"openDisplay");
 
-    mWstEssRMgrOps->resMgrInit();
     mWstEssRMgrOps->resMgrRequestDecoder(mIsVideoPip);
 
     //connect video server first
@@ -321,8 +323,6 @@ int WstClientPlugin::closeDisplay()
 {
     INFO(mLogCategory,"closeDisplay, in");
     mWayland->disconnectFromWayland();
-    mWstEssRMgrOps->resMgrReleaseDecoder();
-    mWstEssRMgrOps->resMgrTerm();
     INFO(mLogCategory,"closeDisplay, out");
     return NO_ERROR;
 }
@@ -359,6 +359,7 @@ int WstClientPlugin::closeWindow()
         }
     }
     mWstEssRMgrOps->resMgrUpdateState(EssRMgrRes_idle);
+    mWstEssRMgrOps->resMgrReleaseDecoder();
     mRenderBuffersMap.clear();
     mDisplayedFrameMap.clear();
     mCommitFrameCnt = 0;
@@ -525,6 +526,26 @@ void WstClientPlugin::handleMsgNotify(int type, void *detail)
 {
     if (mCallback) {
         mCallback->doMsgCallback(mUserData, type, detail);
+    }
+}
+
+void WstClientPlugin::essMgrCallback(int event, void *userData)
+{
+    WstClientPlugin *plugin = static_cast<WstClientPlugin *>(userData);
+    switch ( event )
+    {
+        case EssRMgrEvent_granted: {
+            DEBUG(plugin->mLogCategory,"essmgr notify granted");
+            plugin->openDisplay();
+            plugin->openWindow();
+        } break;
+        case EssRMgrEvent_revoked: {
+            WARNING(plugin->mLogCategory,"essos notify revoked ");
+            plugin->closeWindow();
+            plugin->closeDisplay();
+        } break;
+        default:
+            break;
     }
 }
 

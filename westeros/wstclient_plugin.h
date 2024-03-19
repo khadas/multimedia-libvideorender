@@ -56,6 +56,7 @@ class WstClientPlugin : public RenderPlugin
     int getLogCategory() {
         return mLogCategory;
     };
+    static void essMgrCallback(int event, void *userData);
   private:
     typedef struct {
         bool isSet;

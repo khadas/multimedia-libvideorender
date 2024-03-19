@@ -6,8 +6,6 @@
 
 #define TAG "rlib:wst_essos"
 
-#define ESSRES_LIB_NAME "libessosrmgr.so.0"
-
 #define DEFAULT_WINDOW_WIDTH (1280)
 #define DEFAULT_WINDOW_HEIGHT (720)
 #define DEFAULT_USAGE (EssRMgrVidUse_fullResolution|EssRMgrVidUse_fullQuality|EssRMgrVidUse_fullPerformance)
@@ -22,26 +20,30 @@ void WstEssRMgrOps::resMgrNotify( EssRMgr *rm, int event, int type, int id, void
         case EssRMgrResType_videoDecoder:
             switch ( event )
             {
-                case EssRMgrEvent_granted:{
+                case EssRMgrEvent_granted: {
                     rMgrOps->mResAssignedId = id;
                     memset( &rMgrOps->mResCurrCaps, 0, sizeof(EssRMgrCaps) );
-                    if ( !rMgrOps->EssRMgrResourceGetCaps( rMgrOps->mEssRmgr, EssRMgrResType_videoDecoder, rMgrOps->mResAssignedId, &rMgrOps->mResCurrCaps ) )
+                    if ( !EssRMgrResourceGetCaps( rMgrOps->mEssRmgr, EssRMgrResType_videoDecoder, rMgrOps->mResAssignedId, &rMgrOps->mResCurrCaps ) )
                     {
                         ERROR(rMgrOps->mLogCategory,"resMgrNotify: failed to get caps of assigned decoder");
                     }
-                    DEBUG(rMgrOps->mLogCategory,"async assigned id %d caps %X (%dx%d)",
+                    DEBUG(rMgrOps->mLogCategory,"essos notify granted,async assigned id %d caps %X (%dx%d)",
                             rMgrOps->mResAssignedId,
                             rMgrOps->mResCurrCaps.capabilities,
                             rMgrOps->mResCurrCaps.info.video.maxWidth,
                             rMgrOps->mResCurrCaps.info.video.maxHeight);
+                    if (rMgrOps->mUserCallback) {
+                        rMgrOps->mUserCallback(EssRMgrEvent_granted, rMgrOps->mUserData);
+                    }
                 } break;
-                case EssRMgrEvent_revoked:
-                {
+                case EssRMgrEvent_revoked: {
                     memset( &rMgrOps->mResCurrCaps, 0, sizeof(EssRMgrCaps) );
-                    WARNING(rMgrOps->mLogCategory,"releasing video decoder %d", id);
-                    rMgrOps->EssRMgrReleaseResource( rMgrOps->mEssRmgr, EssRMgrResType_videoDecoder, id );
+                    WARNING(rMgrOps->mLogCategory,"essos notify revoked , releasing video decoder %d", id);
+                    if (rMgrOps->mUserCallback) {
+                        rMgrOps->mUserCallback(EssRMgrEvent_revoked, rMgrOps->mUserData);
+                    }
                     rMgrOps->mResAssignedId = -1;
-                    WARNING(rMgrOps->mLogCategory,"done releasing video decoder %d,request again", id);
+                    WARNING(rMgrOps->mLogCategory,"done releasing video decoder %d", id);
                 } break;
             default:
                 break;
@@ -53,99 +55,34 @@ void WstEssRMgrOps::resMgrNotify( EssRMgr *rm, int event, int type, int id, void
    DEBUG(rMgrOps->mLogCategory,"resMgrNotify: exit");
 }
 
-WstEssRMgrOps::WstEssRMgrOps(WstClientPlugin *plugin,int logCategory) {
-    mPlugin = plugin;
-    mLibHandle = NULL;
+WstEssRMgrOps::WstEssRMgrOps(int logCategory) {
+    mUserData = NULL;
     mResPriority = 0;
     mResAssignedId = -1;
     mResUsage = DEFAULT_USAGE;
     mEssRmgr = NULL;
     mLogCategory = logCategory;
+    mUserCallback = NULL;
 };
 
 WstEssRMgrOps::~WstEssRMgrOps() {
-    mLibHandle = NULL;
 };
+
+void WstEssRMgrOps::setCallback(essMgrCallback essCallback, void *userData)
+{
+    mUserData = userData;
+    mUserCallback = essCallback;
+}
 
 void WstEssRMgrOps::resMgrInit()
 {
-    if (mLibHandle == NULL) {
-        mLibHandle = dlopen(ESSRES_LIB_NAME, RTLD_NOW);
-        if (mLibHandle == NULL) {
-            ERROR(mLogCategory,"unable to dlopen %s : %s",ESSRES_LIB_NAME, dlerror());
-            goto err_tag;
-        }
-    }
-
-    EssRMgrCreate =
-        (essRMgrCreate)dlsym(mLibHandle, "EssRMgrCreate");
-    if (EssRMgrCreate == NULL) {
-        ERROR(mLogCategory,"dlsym EssRMgrCreate failed, err=%s \n", dlerror());
-        goto err_tag;
-    }
-
-    EssRMgrDestroy =
-        (essRMgrDestroy)dlsym(mLibHandle, "EssRMgrDestroy");
-    if (EssRMgrDestroy == NULL) {
-        ERROR(mLogCategory,"dlsym EssRMgrDestroy failed, err=%s \n", dlerror());
-        goto err_tag;
-    }
-
-    EssRMgrRequestResource =
-        (essRMgrRequestResource)dlsym(mLibHandle, "EssRMgrRequestResource");
-    if (EssRMgrRequestResource == NULL) {
-        ERROR(mLogCategory,"dlsym EssRMgrRequestResource failed, err=%s \n", dlerror());
-        goto err_tag;
-    }
-
-    EssRMgrReleaseResource =
-        (essRMgrReleaseResource)dlsym(mLibHandle, "EssRMgrReleaseResource");
-    if (EssRMgrReleaseResource == NULL) {
-        ERROR(mLogCategory,"dlsym EssRMgrReleaseResource failed, err=%s \n", dlerror());
-        goto err_tag;
-    }
-
-    EssRMgrDumpState =
-        (essRMgrDumpStates)dlsym(mLibHandle, "EssRMgrDumpState");
-    if (EssRMgrDumpState == NULL) {
-        ERROR(mLogCategory,"dlsym EssRMgrDumpState failed, err=%s \n", dlerror());
-        goto err_tag;
-    }
-
-    EssRMgrResourceGetCaps =
-        (essRMgrResourceGetCaps)dlsym(mLibHandle, "EssRMgrResourceGetCaps");
-    if (EssRMgrResourceGetCaps == NULL) {
-        ERROR(mLogCategory,"dlsym EssRMgrResourceGetCaps failed, err=%s \n", dlerror());
-        goto err_tag;
-    }
-
-    EssRMgrGetPolicyPriorityTie =
-        (essRMgrGetPolicyPriorityTie)dlsym(mLibHandle, "EssRMgrGetPolicyPriorityTie");
-    if (EssRMgrGetPolicyPriorityTie == NULL) {
-        ERROR(mLogCategory,"dlsym EssRMgrGetPolicyPriorityTie failed, err=%s \n", dlerror());
-        goto err_tag;
-    }
-
-    EssRMgrResourceSetState =
-        (essRMgrResourceSetState)dlsym(mLibHandle, "EssRMgrResourceSetState");
-    if (EssRMgrResourceSetState == NULL) {
-        ERROR(mLogCategory,"dlsym EssRMgrResourceSetState failed, err=%s \n", dlerror());
-        goto err_tag;
-    }
-
     mEssRmgr = EssRMgrCreate();
     if (!mEssRmgr) {
         ERROR(mLogCategory,"EssRMgrCreate failed");
-        goto err_tag;
+        return;
     }
     memset( &mResCurrCaps, 0, sizeof(EssRMgrCaps) );
     INFO(mLogCategory,"resMgrInit,ok");
-    return;
-err_tag:
-    if (mLibHandle) {
-        dlclose(mLibHandle);
-        mLibHandle = NULL;
-    }
     return;
 }
 
@@ -155,11 +92,6 @@ void WstEssRMgrOps::resMgrTerm()
         EssRMgrDestroy(mEssRmgr);
         mEssRmgr = NULL;
         memset( &mResCurrCaps, 0, sizeof(EssRMgrCaps) );
-    }
-
-    if (mLibHandle) {
-        dlclose(mLibHandle);
-        mLibHandle = NULL;
     }
     INFO(mLogCategory,"resMgrTerm, ok");
 }
