@@ -76,7 +76,6 @@ LOCAL_CFLAGS += \
 	-I../ \
 	-I$(TOOLS_PATH) \
 	-I$(STAGING_DIR)/usr/include \
-	-I./essos \
 	$(VERSION_CFLAGS) \
 
 OBJ_CLIENT_LIB += \
@@ -95,7 +94,7 @@ TARGET = $(CLIENT_LIB)
 
 all: $(GENERATED_SOURCES) $(TARGET)
 
-LD_FLAG = -L./essos -g -fPIC -O -Wcpp -lm -lpthread -lz -Wl,-Bsymbolic -ldl
+LD_FLAG = -g -fPIC -O -Wcpp -lm -lpthread -lz -Wl,-Bsymbolic -ldl
 LD_FLAG_LIB = $(LD_FLAG) -shared $(LD_SUPPORT) -llog -lessosrmgr
 
 %.o:%.c $(DEPS)
