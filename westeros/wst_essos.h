@@ -1,6 +1,7 @@
 #ifndef _WST_ESSOS_H_
 #define _WST_ESSOS_H_
 
+#include <mutex>
 #include "essos-resmgr.h"
 
 class WstClientPlugin;
@@ -31,5 +32,6 @@ private:
    EssRMgrRequest mResReq;
 
    essMgrCallback mUserCallback;
+   std::mutex mLock;
 };
 #endif //_WST_ESSOS_H_

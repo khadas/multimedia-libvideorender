@@ -14,6 +14,7 @@ void WstEssRMgrOps::resMgrNotify( EssRMgr *rm, int event, int type, int id, void
 {
    WstEssRMgrOps *rMgrOps = static_cast<WstEssRMgrOps *>(userData);
 
+   std::lock_guard<std::mutex> lck(rMgrOps->mLock);
    DEBUG(rMgrOps->mLogCategory,"resMgrNotify: enter");
    switch ( type )
    {
@@ -21,6 +22,12 @@ void WstEssRMgrOps::resMgrNotify( EssRMgr *rm, int event, int type, int id, void
             switch ( event )
             {
                 case EssRMgrEvent_granted: {
+                    if (rMgrOps->mResAssignedId == id)
+                    {
+                        DEBUG(rMgrOps->mLogCategory,"essos notify granted,assigned id %d",id);
+                        DEBUG(rMgrOps->mLogCategory,"resMgrNotify: exit");
+                        return;
+                    }
                     rMgrOps->mResAssignedId = id;
                     memset( &rMgrOps->mResCurrCaps, 0, sizeof(EssRMgrCaps) );
                     if ( !EssRMgrResourceGetCaps( rMgrOps->mEssRmgr, EssRMgrResType_videoDecoder, rMgrOps->mResAssignedId, &rMgrOps->mResCurrCaps ) )
@@ -76,7 +83,17 @@ void WstEssRMgrOps::setCallback(essMgrCallback essCallback, void *userData)
 
 void WstEssRMgrOps::resMgrInit()
 {
-    mEssRmgr = EssRMgrCreate();
+    int enableEssos = 0;
+    //get environment to enable essos manager,default is invalid
+    char *env = getenv("ENABLE_WST_ESSOS");
+    if (env) {
+        INFO(mLogCategory,"enable essos %s",env);
+        enableEssos = atoi(env);
+    }
+    if (enableEssos > 0)
+    {
+        mEssRmgr = EssRMgrCreate();
+    }
     if (!mEssRmgr) {
         ERROR(mLogCategory,"EssRMgrCreate failed");
         return;
@@ -118,7 +135,7 @@ void WstEssRMgrOps::resMgrRequestDecoder(bool pip)
         WARNING(mLogCategory,"EssRMgrCreate failed");
         return;
     }
-
+    std::lock_guard<std::mutex> lck(mLock);
     DEBUG(mLogCategory,"request resource resUsage %d priority %X", mResUsage, mResPriority);
     result = EssRMgrRequestResource(mEssRmgr, EssRMgrResType_videoDecoder, &mResReq);
     if ( result )
