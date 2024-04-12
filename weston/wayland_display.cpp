@@ -179,6 +179,7 @@ void WaylandDisplay::outputHandleCrtcIndex( void *data,
     }
 }
 
+//aml weston always add crtcIndex in callbacks.
 static const struct wl_output_listener outputListener = {
     WaylandDisplay::outputHandleGeometry,
     WaylandDisplay::outputHandleMode,
@@ -451,6 +452,33 @@ static const struct xdg_surface_listener xdg_surface_listener = {
     WaylandDisplay::handleXdgSurfaceConfigure,
 };
 
+void WaylandDisplay::amlConfigure(void *data, struct aml_config *config, const char *list) {
+    WaylandDisplay *self = static_cast<WaylandDisplay *>(data);
+    TRACE(self->mLogCategory,"aml_config:%s",list);
+    if (list && strlen(list) > 0) {
+        if (strstr(list, "set_video_plane")) {
+            TRACE(self->mLogCategory,"weston enable set_video_plane");
+            self->mAmlConfigAPIList.enableSetVideoPlane = true;
+        }
+        if (strstr(list, "set_pts")) {
+            TRACE(self->mLogCategory,"weston enable set_pts");
+            self->mAmlConfigAPIList.enableSetPts = true;
+        }
+        if (strstr(list, "drop")) {
+            TRACE(self->mLogCategory,"weston enable drop");
+            self->mAmlConfigAPIList.enableDropFrame = true;
+        }
+        if (strstr(list, "keep_last_frame")) {
+            TRACE(self->mLogCategory,"weston enable keep_last_frame");
+            self->mAmlConfigAPIList.enableKeepLastFrame = true;
+        }
+    }
+}
+
+static const struct aml_config_listener aml_config_listener = {
+    WaylandDisplay::amlConfigure,
+};
+
 void
 WaylandDisplay::registryHandleGlobal (void *data, struct wl_registry *registry,
     uint32_t name, const char *interface, uint32_t version)
@@ -522,6 +550,9 @@ WaylandDisplay::registryHandleGlobal (void *data, struct wl_registry *registry,
         //wl_seat_add_listener(self->mSeat, &seat_listener, (void *)self);
     } else if (strcmp(interface, "weston_direct_display_v1") == 0) {
         self->mDirect_display = (struct weston_direct_display_v1 *)wl_registry_bind(registry,name, &weston_direct_display_v1_interface, 1);
+    } else if (strcmp(interface, "aml_config") == 0) {
+        self->mAmlConfig = (struct aml_config*)wl_registry_bind(registry, name, &aml_config_interface, 1);
+        aml_config_add_listener(self->mAmlConfig, &aml_config_listener, (void *)self);
     }
 }
 
@@ -602,7 +633,6 @@ WaylandDisplay::WaylandDisplay(WaylandPlugin *plugin, int logCategory)
     mNoBorderUpdate = false;
     mAreaShmBuffer = NULL;
     mCommitCnt = 0;
-    mIsSendPtsToWeston = false;
     mReCommitAreaSurface = false;
     mAreaSurface = NULL;
     mAreaSurfaceWrapper = NULL;
@@ -610,35 +640,20 @@ WaylandDisplay::WaylandDisplay(WaylandPlugin *plugin, int logCategory)
     mVideoSubSurface = NULL;
     mXdgSurfaceConfigured = false;
     mPip = 0;
-    mIsSendVideoPlaneId = true;
     mCurrentDisplayOutput = &mOutput[0];
     mUpdateRenderRectangle = false;
     memset(&mRenderRect, 0, sizeof(struct Rectangle));
     memset(&mVideoRect, 0, sizeof(struct Rectangle));
     memset(&mWindowRect, 0, sizeof(struct Rectangle));
     mFullScreen = true; //default is full screen
-    char *env = getenv("VIDEO_RENDER_SEND_PTS_TO_WESTON");
-    if (env) {
-        int isSet = atoi(env);
-        if (isSet > 0) {
-            mIsSendPtsToWeston = true;
-            INFO(mLogCategory,"set send pts to weston");
-        } else {
-            mIsSendPtsToWeston = false;
-            INFO(mLogCategory,"do not send pts to weston");
-        }
-    }
-    env = getenv("VIDEO_RENDER_SEND_VIDEO_PLANE_ID_TO_WESTON");
-    if (env) {
-        int isSet = atoi(env);
-        if (isSet == 0) {
-            mIsSendVideoPlaneId = false;
-            INFO(mLogCategory,"do not send video plane id to weston");
-        } else {
-            mIsSendVideoPlaneId = true;
-            INFO(mLogCategory,"send video plane id to weston");
-        }
-    }
+    mAmlConfig = NULL;
+    mKeepLastFrame = 0; //default is off keep last frame
+    //weston config private api
+    mAmlConfigAPIList.enableDropFrame = false;
+    mAmlConfigAPIList.enableKeepLastFrame = false;
+    mAmlConfigAPIList.enableSetPts = false;
+    mAmlConfigAPIList.enableSetVideoPlane = false;
+
     for (int i = 0; i < DEFAULT_DISPLAY_OUTPUT_NUM; i++) {
         mOutput[i].wlOutput = NULL;
         mOutput[i].offsetX = 0;
@@ -722,9 +737,13 @@ int WaylandDisplay::openDisplay()
     createXdgShellWindowSurface();
 
     //config weston video plane
-    if (mIsSendVideoPlaneId) {
+    if (mAmlConfigAPIList.enableSetVideoPlane) {
         INFO(mLogCategory,"set weston video plane:%d",mPip);
         wl_surface_set_video_plane(mVideoSurfaceWrapper, mPip);
+    }
+
+    if (mKeepLastFrame) {
+        setKeepLastFrame(mKeepLastFrame);
     }
 
     //run wl display queue dispatch
@@ -784,6 +803,11 @@ void WaylandDisplay::closeDisplay()
     if (mWlDisplayWrapper) {
         wl_proxy_wrapper_destroy (mWlDisplayWrapper);
         mWlDisplayWrapper = NULL;
+    }
+
+    if (mAmlConfig) {
+        aml_config_destroy(mAmlConfig);
+        mAmlConfig = NULL;
     }
 
     if (mWlQueue) {
@@ -1291,7 +1315,7 @@ void WaylandDisplay::displayFrameBuffer(RenderBuffer * buf, int64_t realDisplayT
         TRACE(mLogCategory,"++attach,renderbuf:%p,wl_buffer:%p(0,0,%d,%d),pts:%lld,commitCnt:%d",buf,wlbuffer,mVideoRect.w,mVideoRect.h,buf->pts,mCommitCnt);
         waylandBuf->attach(mVideoSurfaceWrapper);
 
-        if (mIsSendPtsToWeston) {
+        if (mAmlConfigAPIList.enableSetPts) {
             TRACE(mLogCategory,"display time:%lld,hiPts:%u,lowPts:%u",realDisplayTime, hiPts, lowPts);
             wl_surface_set_pts(mVideoSurfaceWrapper, hiPts, lowPts);
         }
@@ -1550,4 +1574,13 @@ void WaylandDisplay::cleanSurface()
     wl_surface_commit (mVideoSurfaceWrapper);
     wl_surface_attach (mAreaSurfaceWrapper, NULL, 0, 0);
     wl_surface_commit (mAreaSurfaceWrapper);
+}
+
+void WaylandDisplay::setKeepLastFrame(int keep)
+{
+    mKeepLastFrame = keep;
+    if (mVideoSurfaceWrapper && mAmlConfigAPIList.enableKeepLastFrame) {
+        INFO(mLogCategory,"keep last frame:%d",keep);
+        wl_surface_keep_last_frame(mVideoSurfaceWrapper, keep);
+    }
 }

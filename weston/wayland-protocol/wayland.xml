@@ -414,13 +414,11 @@
 	optimization for GL(ES) compositors with wl_shm clients.
       </description>
     </event>
-    <!--
     <event name="drop">
       <description summary="compositor drop buffer">
       Sent when this wl_buffer is dropped by the compositor.
       </description>
     </event>
-    -->
   </interface>
 
   <interface name="wl_data_offer" version="3">
@@ -1693,6 +1691,15 @@
       </description>
       <arg name="pts_hi" type="uint" summary="high 32 bits of frame pts"/>
       <arg name="pts_lo" type="uint" summary="low 32 bits of frame pts"/>
+    </request>
+    <request name="keep_last_frame">
+      <description summary="keep last frame or not">
+    This request sets a value for current surface.
+    The value is uesd to inform server to keep the last frame or not for
+    current surface when the video is over. The value will not change until
+    next different value is committed.
+      </description>
+      <arg name="keep_last_frame" type="uint" summary="keep last frame or not"/>
     </request>
    </interface>
 

@@ -29,6 +29,7 @@
 #include "linux-explicit-synchronization-unstable-v1-client-protocol.h"
 #include "viewporter-client-protocol.h"
 #include "weston-direct-display-client-protocol.h"
+#include "aml-config-client-protocol.h"
 #include "wayland-cursor.h"
 #include "Thread.h"
 #include "Poll.h"
@@ -44,6 +45,13 @@ class WaylandBuffer;
 
 class WaylandDisplay : public Tls::Thread{
   public:
+    typedef struct {
+        bool enableSetVideoPlane;
+        bool enableSetPts;
+        bool enableDropFrame;
+        bool enableKeepLastFrame;
+    } AmlConfigAPIList;
+
     WaylandDisplay(WaylandPlugin *plugin, int logCategory);
     virtual ~WaylandDisplay();
     /**
@@ -103,6 +111,15 @@ class WaylandDisplay : public Tls::Thread{
         return NULL;
     };
     /**
+     * @brief Set the Keep Last Frame when playback end
+     * #param  keep 1:keep last frame, 0:do not keep
+     */
+    void setKeepLastFrame(int keep);
+    AmlConfigAPIList *getAmlConfigAPIList()
+    {
+        return &mAmlConfigAPIList;
+    };
+    /**
      * @brief Set the Select Display Output index
      *
      * @param output selected display output index
@@ -128,10 +145,6 @@ class WaylandDisplay : public Tls::Thread{
      * otherwise video data will display in main video plane
     */
     void setPip(int pip);
-
-    bool isSentPtsToWeston() {
-        return mIsSendPtsToWeston;
-    }
 
     void setRedrawingPending(bool val) {
         mRedrawingPending = val;
@@ -229,6 +242,7 @@ class WaylandDisplay : public Tls::Thread{
     static void handleXdgToplevelConfigure (void *data, struct xdg_toplevel *xdg_toplevel,
                                     int32_t width, int32_t height, struct wl_array *states);
     static void handleXdgSurfaceConfigure (void *data, struct xdg_surface *xdg_surface, uint32_t serial);
+    static void amlConfigure(void *data, struct aml_config *config, const char *list);
   private:
     typedef struct DisplayOutput {
         struct wl_output *wlOutput;
@@ -277,6 +291,7 @@ class WaylandDisplay : public Tls::Thread{
     struct wl_touch *mTouch;
     struct wl_keyboard *mKeyboard;
     struct weston_direct_display_v1 *mDirect_display;
+    struct aml_config *mAmlConfig;
 
     /*primary output will signal first,so 0 index is primary wl_output, 1 index is extend wl_output*/
     DisplayOutput mOutput[DEFAULT_DISPLAY_OUTPUT_NUM]; //info about wl_output
@@ -311,8 +326,6 @@ class WaylandDisplay : public Tls::Thread{
     Tls::Mutex mConfigureMutex;
     bool mFullScreen; //default full screen
 
-    bool mIsSendPtsToWeston;
-
     bool mReCommitAreaSurface;
 
     bool mUpdateRenderRectangle;
@@ -341,8 +354,9 @@ class WaylandDisplay : public Tls::Thread{
     std::unordered_map<int64_t, WaylandBuffer *> mCommittedBufferMap;
 
     int mPip; //pip video, 1->pip, 0: main video(default)
-    bool mIsSendVideoPlaneId; //default true,otherwise false if set
     bool mRedrawingPending;//it will be true when weston obtains a buffer rendering,otherwise false when rendered
+    AmlConfigAPIList mAmlConfigAPIList;
+    int mKeepLastFrame; //keep last frame when playback end
 };
 
 #endif /*__WAYLAND_DISPLAY_H__*/

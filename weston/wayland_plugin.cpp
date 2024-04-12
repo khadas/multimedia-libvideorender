@@ -104,7 +104,8 @@ int WaylandPlugin::openWindow()
      * we should create a post buffer thread to
      * send buffer by mono time
      */
-    if (!mDisplay->isSentPtsToWeston()) {
+    WaylandDisplay::AmlConfigAPIList *amlconfig = mDisplay->getAmlConfigAPIList();
+    if (!amlconfig->enableSetPts) {
             DEBUG(mLogCategory,"run frame post thread");
         setThreadPriority(50);
         run("waylandPostThread");
@@ -124,10 +125,11 @@ int WaylandPlugin::displayFrame(RenderBuffer *buffer, int64_t displayTime)
      * push buffer to queue, the buffer will send to
      * weston in post thread
      */
-    if (!mDisplay->isSentPtsToWeston()) {
+    WaylandDisplay::AmlConfigAPIList *amlconfig = mDisplay->getAmlConfigAPIList();
+    if (!amlconfig->enableSetPts) {
         buffer->time = displayTime;
         mQueue->push(buffer);
-            DEBUG(mLogCategory,"queue size:%d",mQueue->getCnt());
+        DEBUG(mLogCategory,"queue size:%d",mQueue->getCnt());
     } else {
         mDisplay->displayFrameBuffer(buffer, displayTime);
     }
@@ -232,6 +234,11 @@ int WaylandPlugin::setValue(PluginKey key, void *value)
         case PLUGIN_KEY_IMMEDIATELY_OUTPUT: {
             bool mImmediatelyOutput = (*(int *)(value)) > 0? true: false;
             DEBUG(mLogCategory, "Set immediately output:%d",mImmediatelyOutput);
+        } break;
+        case PLUGIN_KEY_KEEP_LAST_FRAME: {
+            int keep = *(int *) (value);
+            DEBUG(mLogCategory, "Set keep last frame:%d",keep);
+            mDisplay->setKeepLastFrame(keep);
         } break;
     }
     return 0;

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="aml_config">
+
+  <copyright>
+    Copyright © 2019 Collabora Ltd.
+
+    Permission is hereby granted, free of charge, to any person obtaining a
+    copy of this software and associated documentation files (the "Software"),
+    to deal in the Software without restriction, including without limitation
+    the rights to use, copy, modify, merge, publish, distribute, sublicense,
+    and/or sell copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice (including the next
+    paragraph) shall be included in all copies or substantial portions of the
+    Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+    THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+    DEALINGS IN THE SOFTWARE.
+  </copyright>
+
+  <interface name="aml_config" version="1">
+    <description summary="aml config for client">
+      Weston extension to inform the clients of the new interface added by amlogic.
+    </description>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy factory object">
+        Destroys the factory object, but does not affect any other objects.
+      </description>
+    </request>
+
+    <event name="aml_config_list">
+      <description summary="aml config list">
+  The aml_config_list event inform the clients of the new interface add by amlogic
+      </description>
+      <arg name="list" type="string"
+     summary="the new interface added by amlogic"/>
+    </event>
+  </interface>
+</protocol>

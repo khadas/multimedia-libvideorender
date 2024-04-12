@@ -91,13 +91,14 @@ void WaylandBuffer::bufferdroped (void *data, struct wl_buffer *wl_buffer)
     }
 }
 
-//static const struct wl_buffer_listener buffer_listener = {
-//    WaylandBuffer::bufferRelease,
-//    WaylandBuffer::bufferdroped
-//};
- static const struct wl_buffer_listener buffer_listener = {
-     WaylandBuffer::bufferRelease
- };
+static const struct wl_buffer_listener buffer_with_drop_listener = {
+   WaylandBuffer::bufferRelease,
+   WaylandBuffer::bufferdroped,
+};
+
+static const struct wl_buffer_listener buffer_listener = {
+    WaylandBuffer::bufferRelease
+};
 
 /*if we commit buffers to weston too fast,it causes weston can't invoke this callback*/
 void WaylandBuffer::frameDisplayedCallback(void *data, struct wl_callback *callback, uint32_t time)
@@ -121,6 +122,7 @@ static const struct wl_callback_listener frame_callback_listener = {
 int WaylandBuffer::constructWlBuffer(RenderBuffer *buf)
 {
     struct wl_buffer * wlbuffer = NULL;
+    WaylandDisplay::AmlConfigAPIList *amlConfigAPI = mDisplay->getAmlConfigAPIList();
 
     mRenderBuffer = buf;
     if (mWaylandWlWrap) {
@@ -141,7 +143,11 @@ int WaylandBuffer::constructWlBuffer(RenderBuffer *buf)
     }
 
     /*register buffer release listen*/
-    wl_buffer_add_listener (wlbuffer, &buffer_listener, this);
+    if (amlConfigAPI->enableDropFrame) {
+        wl_buffer_add_listener (wlbuffer, &buffer_with_drop_listener, this);
+    } else {
+        wl_buffer_add_listener (wlbuffer, &buffer_listener, this);
+    }
 
     return NO_ERROR;
 }
