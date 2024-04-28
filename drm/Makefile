@@ -1,3 +1,6 @@
+OUT_DIR ?= .
+$(info "OUT_DIR : $(OUT_DIR)")
+
 SHELL := /bin/bash
 BRANCH_NAME="$(shell cd $(SRC_PATH);git branch -a | sed -n '/'*'/p')"
 GIT_VERSION :="$(shell cd $(SRC_PATH);git log | grep commit -m 1 | cut -d' ' -f 2)"
@@ -70,25 +73,26 @@ LD_FLAG = -g -fPIC -O -Wcpp -lm -lpthread -lz -Wl,-Bsymbolic -ldl
 LD_FLAG_LIB = $(LD_FLAG) -shared $(LD_SUPPORT) -llog -ldrm
 
 %.o:%.c $(DEPS)
-	echo CC $@ $< $(FLAGS)
-	$(CC) -c -o $@ $< $(CFLAGS) -fPIC
+	echo CC $(OUT_DIR)/$@ $(OUT_DIR)/$< $(FLAGS)
+	$(CC) -c -o $(OUT_DIR)/$@ $(OUT_DIR)/$< $(CFLAGS) -fPIC
 
 %.o:%.cpp $(DEPS)
-	echo CXX $@ $< $(FLAGS)
-	$(CXX) -c -o $@ $< $(CXXFLAGS) -fPIC
+	echo CXX $(OUT_DIR)/$@ $< $(FLAGS)
+	$(CXX) -c -o $(OUT_DIR)/$@ $< $(CXXFLAGS) -fPIC
 
 $(CLIENT_LIB): $(OBJ_CLIENT_LIB)
-	$(CXX) -o $@ $^ $(LD_FLAG_LIB)
-	cp -f $(CLIENT_LIB) $(STAGING_DIR)/usr/lib
-	rm -f $(OBJ_CLIENT_LIB)
+	$(CXX) -o $(OUT_DIR)/$@ $(patsubst %, $(OUT_DIR)/%, $^) $(LD_FLAG_LIB)
+	cp -f $(OUT_DIR)/$(CLIENT_LIB) $(STAGING_DIR)/usr/lib
+	rm -f $(patsubst %, $(OUT_DIR)/%, $(OBJ_CLIENT_LIB))
 
 .PHONY: install
 install:
 	echo $(TARGET_DIR)
-	cp -f $(CLIENT_LIB) $(TARGET_DIR)/usr/lib/
+	cp -f $(OUT_DIR)/$(CLIENT_LIB) $(TARGET_DIR)/usr/lib/
 
 .PHONY: clean
 
 clean:
-	rm $(CLIENT_LIB)
-	rm -f *.o
+	rm $(OUT_DIR)/$(CLIENT_LIB)
+	rm -f $(patsubst %, $(OUT_DIR)/%, $(OBJ_DRM_DISPLAY))
+	rm -f $(OUT_DIR)/*.o

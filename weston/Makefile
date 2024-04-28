@@ -1,3 +1,6 @@
+OUT_DIR ?= .
+$(info "OUT_DIR : $(OUT_DIR)")
+
 SHELL := /bin/bash
 BRANCH_NAME="$(shell cd $(SRC_PATH);git branch -a | sed -n '/'*'/p')"
 GIT_VERSION :="$(shell cd $(SRC_PATH);git log | grep commit -m 1 | cut -d' ' -f 2)"
@@ -73,7 +76,7 @@ OBJ_WESTON_DISPLAY = \
 	wayland_dma.o
 
 LOCAL_CFLAGS += \
-	-I$(PROTOCOL_PATH)
+	-I$(OUT_DIR)/$(PROTOCOL_PATH)
 
 ifeq ($(WAYLAND_SUPPORT), y)
 LOCAL_CFLAGS += -DSUPPORT_WAYLAND
@@ -110,38 +113,41 @@ LD_FLAG = -g -fPIC -O -Wcpp -lm -lpthread -lz -Wl,-Bsymbolic -ldl
 LD_FLAG_LIB = $(LD_FLAG) -shared $(LD_SUPPORT) -llog
 
 %.o:%.c $(DEPS)
-	echo CC $@ $< $(FLAGS)
-	$(CC) -c -o $@ $< $(CFLAGS) -fPIC
+	echo CC $(OUT_DIR)/$@ $(OUT_DIR)/$< $(FLAGS)
+	$(CC) -c -o $(OUT_DIR)/$@ $(OUT_DIR)/$< $(CFLAGS) -fPIC
 
 %.o:%.cpp $(DEPS)
-	echo CXX $@ $< $(FLAGS)
-	$(CXX) -c -o $@ $< $(CXXFLAGS) -fPIC
+	echo CXX $(OUT_DIR)/$@ $< $(FLAGS)
+	$(CXX) -c -o $(OUT_DIR)/$@ $< $(CXXFLAGS) -fPIC
 
 $(CLIENT_LIB): $(OBJ_CLIENT_LIB)
-	$(CXX) -o $@ $^ $(LD_FLAG_LIB)
-	cp -f $(CLIENT_LIB) $(STAGING_DIR)/usr/lib
-	rm -f $(OBJ_CLIENT_LIB)
+	$(CXX) -o $(OUT_DIR)/$@ $(patsubst %, $(OUT_DIR)/%, $^) $(LD_FLAG_LIB)
+	cp -f $(OUT_DIR)/$(CLIENT_LIB) $(STAGING_DIR)/usr/lib
+	rm -f $(patsubst %, $(OUT_DIR)/%, $(OBJ_CLIENT_LIB))
 
 $(PROTOCOL_PATH)/%-protocol.c : $(PROTOCOL_PATH)/%.xml
 	echo $(@D)
-	mkdir -p $(@D) && $(SCANNER_TOOL) public-code < $< > $@
+	mkdir -p $(@D) && $(SCANNER_TOOL) public-code < $< > $(OUT_DIR)/$@
 
 $(PROTOCOL_PATH)/%-server-protocol.h : $(PROTOCOL_PATH)/%.xml
-	mkdir -p $(@D) && $(SCANNER_TOOL) server-header < $< > $@
+	mkdir -p $(@D) && $(SCANNER_TOOL) server-header < $< > $(OUT_DIR)/$@
 
 $(PROTOCOL_PATH)/%-client-protocol.h : $(PROTOCOL_PATH)/%.xml
-	mkdir -p $(@D) && $(SCANNER_TOOL) client-header < $< > $@
+	mkdir -p $(@D) && $(SCANNER_TOOL) client-header < $< > $(OUT_DIR)/$@
 
 
 .PHONY: install
 install:
 	echo $(TARGET_DIR)
-	cp -f $(CLIENT_LIB) $(TARGET_DIR)/usr/lib/
+	cp -f $(OUT_DIR)/$(CLIENT_LIB) $(TARGET_DIR)/usr/lib/
 
 .PHONY: clean
 
 clean:
-	rm $(CLIENT_LIB)
-	rm -f $(PROTOCOL_PATH)/*.o
-	rm -f $(OBJ_WESTON_DISPLAY)
-	rm -f *.o
+	rm $(OUT_DIR)/$(CLIENT_LIB)
+	rm -f $(OUT_DIR)/$(PROTOCOL_PATH)/*.o
+	rm -f $(patsubst %, $(OUT_DIR)/%, $(OBJ_WESTON_DISPLAY))
+	rm -f $(OUT_DIR)/*.o
+
+$(shell mkdir -p $(OUT_DIR)/wayland-protocol)
+$(shell mkdir -p $(OUT_DIR)/$(TOOLS_PATH))
